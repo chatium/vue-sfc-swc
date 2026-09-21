@@ -2,7 +2,7 @@
 //! Babel's 0-based `node.start` / `node.end`.
 
 use swc_core::common::{BytePos, Span};
-use swc_core::ecma::ast::{Expr, Program};
+use swc_core::ecma::ast::{Expr, Module, Program};
 use swc_core::ecma::visit::{VisitMut, VisitMutWith};
 
 struct Rebase {
@@ -44,6 +44,10 @@ pub fn strip_parens_expr(expr: &mut Expr) {
 
 pub fn strip_parens_program(program: &mut Program) {
     program.visit_mut_with(&mut StripParens);
+}
+
+pub fn rebase_module(module: &mut Module, base: BytePos) {
+    module.visit_mut_with(&mut Rebase { base });
 }
 
 pub fn rebase_program(program: &mut Program, base: BytePos) {

@@ -41,7 +41,10 @@ fs.writeFileSync('tests/fixtures/parse-base.json', JSON.stringify(out))
 console.log(`parse-base: ${out.length}`)
 
 // --- SFC descriptor parse ---------------------------------------------------
-const sfcSources = JSON.parse(fs.readFileSync('tests/corpus/sfc.json', 'utf8'))
+const sfcSources = [
+  ...JSON.parse(fs.readFileSync('tests/corpus/sfc.json', 'utf8')),
+  ...JSON.parse(fs.readFileSync('tests/corpus/sfc-extra.json', 'utf8')),
+]
 const sfcApi = require('@vue/compiler-sfc')
 
 function block(b) {
@@ -144,3 +147,48 @@ for (const input of templates) {
 }
 fs.writeFileSync('tests/fixtures/compile-template.json', JSON.stringify(tmplOut))
 console.log(`compile-template: ${tmplOut.length}`)
+
+// --- rewriteDefault ---------------------------------------------------------
+const rdCases = JSON.parse(fs.readFileSync('tests/corpus/rewrite-default.json', 'utf8'))
+const rdOut = []
+for (const input of rdCases) {
+  for (const ts of [false, true]) {
+    let out
+    try {
+      out = sfcApi.rewriteDefault(input, '__sfc__', ts ? ['typescript'] : undefined)
+    } catch (e) {
+      continue
+    }
+    rdOut.push({ input, ts, output: out })
+  }
+}
+fs.writeFileSync('tests/fixtures/rewrite-default.json', JSON.stringify(rdOut))
+console.log(`rewrite-default: ${rdOut.length}`)
+
+// --- compileScript ----------------------------------------------------------
+const scriptOut = []
+for (const source of sfcSources) {
+  let descriptor
+  try {
+    descriptor = sfcApi.parse(source, { filename: 'anonymous.vue', sourceMap: false }).descriptor
+  } catch {
+    continue
+  }
+  if (!descriptor.script && !descriptor.scriptSetup) continue
+  for (const inlineTemplate of [false, true]) {
+    let out
+    try {
+      const r = sfcApi.compileScript(descriptor, {
+        id: 'xxxxxxxx',
+        inlineTemplate,
+        sourceMap: false,
+      })
+      out = { content: r.content, bindings: r.bindings ? { ...r.bindings } : null }
+    } catch (e) {
+      out = { error: String(e.message || e) }
+    }
+    scriptOut.push({ input: source, inlineTemplate, ...out })
+  }
+}
+fs.writeFileSync('tests/fixtures/compile-script.json', JSON.stringify(scriptOut))
+console.log(`compile-script: ${scriptOut.length}`)

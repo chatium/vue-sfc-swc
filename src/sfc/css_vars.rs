@@ -132,3 +132,56 @@ pub fn gen_css_vars_from_list(vars: &[String], id: &str, is_ssr: bool) -> String
         .collect();
     format!("{{\n  {}\n}}", body.join(",\n  "))
 }
+
+pub const CSS_VARS_HELPER: &str = "useCssVars";
+
+/// `genCssVarsCode`
+pub fn gen_css_vars_code(
+    vars: &[String],
+    bindings: &crate::core::options::BindingMetadata,
+    id: &str,
+    _is_prod: bool,
+) -> String {
+    use crate::core::ast::Arena;
+    use crate::core::options::TransformOptions;
+    use crate::core::transform::TransformContext;
+    use crate::core::transforms::transform_expression::{
+        process_expression, stringify_expression,
+    };
+
+    let vars_exp = gen_css_vars_from_list(vars, id, false);
+    let mut arena = Arena::new();
+    let root = arena.create_root(Vec::new(), String::new());
+    let mut opts = TransformOptions {
+        prefix_identifiers: true,
+        inline: true,
+        ..Default::default()
+    };
+    if bindings.is_script_setup != Some(false) {
+        opts.binding_metadata = bindings.clone();
+    }
+    let mut ctx = TransformContext::new(arena, root, opts);
+    let exp = ctx.a.simple_exp(vars_exp, false);
+    let transformed = process_expression(exp, &mut ctx, false, false, None);
+    let s = stringify_expression(&ctx.a, transformed);
+    format!("_{CSS_VARS_HELPER}(_ctx => ({s}))")
+}
+
+/// `genNormalScriptCssVarsCode`
+pub fn gen_normal_script_css_vars_code(
+    css_vars: &[String],
+    bindings: &crate::core::options::BindingMetadata,
+    id: &str,
+    is_prod: bool,
+    default_var: &str,
+) -> String {
+    format!(
+        "\nimport {{ {CSS_VARS_HELPER} as _{CSS_VARS_HELPER} }} from 'vue'\n\
+const __injectCSSVars__ = () => {{\n{}}}\n\
+const __setup__ = {default_var}.setup\n\
+{default_var}.setup = __setup__\n  \
+? (props, ctx) => {{ __injectCSSVars__();return __setup__(props, ctx) }}\n  \
+: __injectCSSVars__\n",
+        gen_css_vars_code(css_vars, bindings, id, is_prod)
+    )
+}

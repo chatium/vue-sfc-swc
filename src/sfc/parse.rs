@@ -76,10 +76,11 @@ impl From<CompilerError> for SfcError {
     }
 }
 
-#[derive(Debug, Clone)]
 pub struct SfcParseResult {
     pub descriptor: SfcDescriptor,
     pub errors: Vec<SfcError>,
+    /// owns the template AST nodes referenced by `descriptor.template.ast`
+    pub arena: Arena,
 }
 
 #[derive(Debug, Clone)]
@@ -311,5 +312,9 @@ also present because they must be processed together."
         .iter()
         .any(|s| s.scoped && (s.content.contains("::v-slotted(") || s.content.contains(":slotted(")));
 
-    SfcParseResult { descriptor, errors }
+    SfcParseResult {
+        descriptor,
+        errors,
+        arena: parsed.arena,
+    }
 }

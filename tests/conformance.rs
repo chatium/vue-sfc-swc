@@ -294,3 +294,93 @@ fn compile_template() {
     eprintln!("compile-template: {ok}/{} match", cases.len());
     report("compile-template", cases.len(), failed);
 }
+
+#[test]
+fn rewrite_default() {
+    let cases = load("rewrite-default");
+    let mut failed: Vec<(String, String)> = Vec::new();
+    for case in &cases {
+        let input = case["input"].as_str().unwrap();
+        let ts = case["ts"].as_bool().unwrap();
+        let want = case["output"].as_str().unwrap();
+        let got = vue_sfc::sfc::rewrite_default::rewrite_default(input, "__sfc__", ts);
+        if got != want {
+            failed.push((
+                format!("{input:?} ts={ts}"),
+                format!("got:\n{got}\nwant:\n{want}"),
+            ));
+        }
+    }
+    report("rewrite-default", cases.len(), failed);
+}
+
+#[test]
+fn compile_script() {
+    let cases = load("compile-script");
+    let mut failed: Vec<(String, String)> = Vec::new();
+    let mut ok = 0usize;
+    let mut errored = 0usize;
+    for case in &cases {
+        let input = case["input"].as_str().unwrap();
+        let inline = case["inlineTemplate"].as_bool().unwrap();
+        let want_error = case.get("error").and_then(|e| e.as_str());
+        let result = std::panic::catch_unwind(|| {
+            let parsed = vue_sfc::sfc::parse::parse(
+                input,
+                vue_sfc::sfc::parse::SfcParseOptions {
+                    source_map: false,
+                    ..Default::default()
+                },
+            );
+            let arena = vue_sfc::core::ast::Arena::new();
+            let _ = &arena;
+            vue_sfc::sfc::compile_script::compile_script(
+                &parsed.descriptor,
+                &parsed.arena,
+                vue_sfc::sfc::script::context::ScriptCompileOptions {
+                    id: "xxxxxxxx".to_string(),
+                    inline_template: inline,
+                    ..Default::default()
+                },
+            )
+        });
+        match (result, want_error) {
+            (Ok(Ok(r)), None) => {
+                let want = case["content"].as_str().unwrap();
+                if r.content == want {
+                    ok += 1;
+                } else {
+                    failed.push((
+                        format!("{input:?} inline={inline}"),
+                        format!("got:\n{}\n---want:\n{want}", r.content),
+                    ));
+                }
+            }
+            (Ok(Err(_)), Some(_)) => {
+                errored += 1;
+                ok += 1;
+            }
+            (Ok(Err(e)), None) => failed.push((
+                format!("{input:?} inline={inline}"),
+                format!("unexpected error: {e}"),
+            )),
+            (Ok(Ok(_)), Some(e)) => failed.push((
+                format!("{input:?} inline={inline}"),
+                format!("expected error: {e}"),
+            )),
+            (Err(p), _) => {
+                let msg = p
+                    .downcast_ref::<String>()
+                    .cloned()
+                    .or_else(|| p.downcast_ref::<&str>().map(|s| s.to_string()))
+                    .unwrap_or_default();
+                failed.push((format!("{input:?} inline={inline}"), format!("panic: {msg}")));
+            }
+        }
+    }
+    eprintln!(
+        "compile-script: {ok}/{} match ({errored} matched as errors)",
+        cases.len()
+    );
+    report("compile-script", cases.len(), failed);
+}

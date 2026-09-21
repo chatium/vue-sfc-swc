@@ -1,7 +1,7 @@
 //! swc-backed replacement for the `@babel/parser` calls the JS compiler makes.
 
 use swc_core::common::{FileName, SourceMap, sync::Lrc};
-use swc_core::ecma::ast::{Expr, Program};
+use swc_core::ecma::ast::{Expr, Module, Program};
 use swc_core::ecma::parser::{EsSyntax, Parser, StringInput, Syntax, TsSyntax, lexer::Lexer};
 
 fn syntax(ts: bool) -> Syntax {
@@ -41,6 +41,30 @@ pub fn parse_expression(src: &str, ts: bool) -> Result<Expr, String> {
             super::spans::rebase_expr(&mut expr, base);
             super::spans::strip_parens_expr(&mut expr);
             Ok(expr)
+        }
+        Err(e) => Err(e.into_kind().msg().to_string()),
+    }
+}
+
+/// Parses `src` as an ES module.
+pub fn parse_module(src: &str, ts: bool) -> Result<Module, String> {
+    let cm: Lrc<SourceMap> = Default::default();
+    let fm = cm.new_source_file(Lrc::new(FileName::Anon), src.to_string());
+    let base = fm.start_pos;
+    let lexer = Lexer::new(
+        syntax(ts),
+        Default::default(),
+        StringInput::from(&*fm),
+        None,
+    );
+    let mut parser = Parser::new_from(lexer);
+    match parser.parse_module() {
+        Ok(mut module) => {
+            if let Some(e) = parser.take_errors().into_iter().next() {
+                return Err(e.into_kind().msg().to_string());
+            }
+            super::spans::rebase_module(&mut module, base);
+            Ok(module)
         }
         Err(e) => Err(e.into_kind().msg().to_string()),
     }
