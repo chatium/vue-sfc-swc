@@ -71,6 +71,11 @@ Current state — every case byte-identical:
 | `postcss-roundtrip` / `selector-*` | 208 |
 | `ugc-vue` (end to end) | 250 of 256 |
 
+`tools/check-dir.mjs <dir>` runs the same end-to-end check over a tree of real `.vue` files without
+vendoring them — it writes `tests/fixtures/ugc-vue-local.json` (gitignored), which `ugc_vue_local`
+picks up and otherwise skips. Against the 197 distinct `.vue` files in the `gbn` monorepo: 193 of
+197, the four being the same diagnostic-wording cases.
+
 ## Known divergences
 
 Six `ugc-vue` cases differ, all of them the *wording* of a diagnostic for invalid input; the stage,

@@ -29,7 +29,7 @@ pub fn exit_text(node: NodeId, ctx: &mut TransformContext) {
         let child = children[i];
         if is_text_node(&ctx.a, child) {
             has_text = true;
-            let mut j = i + 1;
+            let j = i + 1;
             loop {
                 let children = ctx.a.children_of(node).clone();
                 if j >= children.len() {
@@ -65,7 +65,10 @@ pub fn exit_text(node: NodeId, ctx: &mut TransformContext) {
                 && !ctx.a.el(node).props.iter().any(|p| {
                     matches!(ctx.a.node(*p), Node::Directive(d)
                         if !ctx.opts.directive_transforms.contains_key(&d.name))
-                })));
+                })
+                // a <template> with no special directive renders as a
+                // fragment, so its children must become vnodes
+                && ctx.a.el(node).tag != "template"));
     if !has_text || single_leave {
         return;
     }

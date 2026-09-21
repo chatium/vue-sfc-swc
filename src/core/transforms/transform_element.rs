@@ -467,6 +467,9 @@ pub fn build_props(
                 has_dynamic_keys = true;
                 if let Some(exp) = exp {
                     if is_v_bind {
+                        // the marker becomes its own merge argument, after
+                        // everything collected so far
+                        push_merge_arg!(ctx, None::<NodeId>);
                         if ctx.scopes.v_for > 0 {
                             let k = ctx.a.simple_exp("ref_for", true);
                             let v = ctx.a.simple_exp("true", false);

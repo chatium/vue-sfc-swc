@@ -151,7 +151,6 @@ fn rewrite_identifier(
     rc: &RewriteCtx,
 ) -> (String, Option<(u32, u32)>) {
     let ty = ctx.opts.binding_metadata.get(raw);
-    let mut span_override: Option<(u32, u32)> = None;
     if rc.inline {
         let is_assignment_lval = id.map(|i| i.assign_left.is_some()).unwrap_or(false);
         let is_update_arg = id.map(|i| i.update_arg.is_some()).unwrap_or(false);
@@ -203,7 +202,6 @@ fn rewrite_identifier(
                     None,
                 );
             } else if let Some(info) = id.and_then(|i| i.update_arg.clone()) {
-                span_override = Some((info.start, info.end));
                 let prefix = if info.prefix { info.op.clone() } else { String::new() };
                 let postfix = if info.prefix { String::new() } else { info.op.clone() };
                 let is_ref = ctx.helper_string(RuntimeHelper::IS_REF);
@@ -212,7 +210,7 @@ fn rewrite_identifier(
                     format!(
                         "{is_ref}({raw}){ts} ? {prefix}{raw}.value{postfix} : {prefix}{raw}{postfix}"
                     ),
-                    span_override,
+                    Some((info.start, info.end)),
                 );
             } else if is_destructure_assignment {
                 return (raw.to_string(), None);

@@ -2,7 +2,7 @@
 //! relies on (class/id renaming, `:global`/`:local`, keyframes localization).
 
 use super::postcss::node::{CssKind, CssTree};
-use super::selector::{SelKind, SelNode, Selector, parse as parse_selector};
+use super::selector::{SelKind, Selector, parse as parse_selector};
 
 /// `string-hash`
 fn string_hash(s: &str) -> u32 {
@@ -72,7 +72,7 @@ pub fn apply(tree: &mut CssTree, original_css: &str) -> ModulesResult {
     let mut keyframes: Vec<(String, String)> = Vec::new();
     let mut error = None;
 
-    let mut export = |name: &str, scoped: &str, exports: &mut Vec<(String, String)>| {
+    let export = |name: &str, scoped: &str, exports: &mut Vec<(String, String)>| {
         if !exports.iter().any(|(k, v)| k == name && v == scoped) {
             exports.push((name.to_string(), scoped.to_string()));
         }

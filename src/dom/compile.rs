@@ -6,7 +6,7 @@ use crate::core::ast::{Arena, NodeId};
 use crate::core::codegen::{CodegenResult, generate};
 use crate::core::errors::CompilerError;
 use crate::core::options::*;
-use crate::core::parser::{ParseMode, ParserOptions, base_parse};
+use crate::core::parser::{ParseMode, base_parse};
 use crate::core::transform::{TransformContext, transform};
 
 use super::parser_options::dom_parser_options;

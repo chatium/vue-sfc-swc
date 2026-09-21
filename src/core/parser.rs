@@ -73,6 +73,7 @@ pub enum QuoteType {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SeqKind {
     None,
+    #[allow(dead_code)]
     Cdata,
     CdataEnd,
     CommentEnd,
@@ -105,7 +106,6 @@ mod cc {
     pub const GRAVE_ACCENT: u32 = 96;
     pub const DASH: u32 = 0x2d;
     pub const SLASH: u32 = 0x2f;
-    pub const SEMI: u32 = 0x3b;
     pub const LT: u32 = 0x3c;
     pub const EQ: u32 = 0x3d;
     pub const GT: u32 = 0x3e;
@@ -2138,32 +2138,6 @@ fn condense(s: &str) -> String {
     ret
 }
 
-fn unused_dir_to_attr(dir: Node) -> Node {
-    let d = match dir {
-        Node::Directive(d) => *d,
-        other => return other,
-    };
-    let raw_name = d.raw_name.clone().unwrap_or_default();
-    let name_start = d.loc.start.offset;
-    let name_loc = SourceLocation {
-        start: d.loc.start,
-        end: Position {
-            offset: name_start + utf16_len(&raw_name) as i64,
-            line: d.loc.start.line,
-            column: d.loc.start.column + utf16_len(&raw_name) as i64,
-        },
-        source: raw_name.clone(),
-    };
-    let attr = AttributeNode {
-        name: raw_name,
-        name_loc,
-        value: None,
-        loc: d.loc.clone(),
-    };
-    // NOTE: the JS version copies `dir.exp` into the attribute value; it needs
-    // arena access, so `Parser::dir_to_attr_with_exp` does that part.
-    Node::Attribute(Box::new(attr))
-}
 
 pub struct ParseResult {
     pub arena: Arena,

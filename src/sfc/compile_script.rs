@@ -83,9 +83,6 @@ impl Bindings {
             None => self.0.push((name.to_string(), ty)),
         }
     }
-    fn get(&self, name: &str) -> Option<BindingType> {
-        self.0.iter().find(|(n, _)| n == name).map(|(_, t)| *t)
-    }
 }
 
 fn walk_pattern(pat: &Pat, bindings: &mut Bindings, is_const: bool, is_define_call: bool) {

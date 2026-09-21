@@ -775,7 +775,25 @@ const UGC_DIAGNOSTIC_DIVERGENCE: &[&str] = &[
 /// End-to-end: the exact pipeline `helper.cjs` runs for `.vue` files.
 #[test]
 fn ugc_vue() {
-    let cases = load("ugc-vue");
+    run_ugc_cases("ugc-vue", load("ugc-vue"));
+}
+
+/// The same check over a tree of real `.vue` files, which are not vendored
+/// here: `node tools/check-dir.mjs <dir>` writes the fixture, and this test
+/// is a no-op until it does.
+#[test]
+fn ugc_vue_local() {
+    let path = format!(
+        "{}/tests/fixtures/ugc-vue-local.json",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return;
+    };
+    run_ugc_cases("ugc-vue-local", serde_json::from_str(&text).unwrap());
+}
+
+fn run_ugc_cases(name: &str, cases: Vec<Value>) {
     let mut failed: Vec<(String, String)> = Vec::new();
     let mut ok = 0usize;
     let mut errs = 0usize;
@@ -902,9 +920,9 @@ fn ugc_vue() {
         !UGC_DIAGNOSTIC_DIVERGENCE.iter().any(|m| src.contains(m))
     });
     eprintln!(
-        "ugc-vue: {ok}/{} match ({errs} matched as errors, {} known wording divergences)",
+        "{name}: {ok}/{} match ({errs} matched as errors, {} known wording divergences)",
         cases.len(),
         before - failed.len()
     );
-    report("ugc-vue", cases.len(), failed);
+    report(name, cases.len(), failed);
 }

@@ -261,17 +261,23 @@ pub fn compile_vue(source: &str, path: &str) -> Result<VueOutput, VueFailure> {
                 ..Default::default()
             },
         );
-        if let Some(e) = r.errors.first() {
+        // `vueErrors` throws here without attaching `logic`, so the helper's
+        // catch-all classifies it as the script stage
+        if !r.errors.is_empty() {
             return Err(VueFailure {
-                stage: VueStage::Template,
-                errors: vec![VueError {
-                    msg: e.message.clone(),
-                    position: e.loc.as_ref().map(|l| VuePosition {
-                        line: l.start.line - 1,
-                        character: l.start.column - 1,
-                    }),
-                }],
-                logic: Some(logic),
+                stage: VueStage::Script,
+                errors: r
+                    .errors
+                    .iter()
+                    .map(|e| VueError {
+                        msg: e.message.clone(),
+                        position: e.loc.as_ref().map(|l| VuePosition {
+                            line: l.start.line - 1,
+                            character: l.start.column - 1,
+                        }),
+                    })
+                    .collect(),
+                logic: None,
                 file_path: path.to_string(),
             });
         }

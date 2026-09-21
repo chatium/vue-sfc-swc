@@ -180,8 +180,10 @@ pub fn exit_for(
     let children = ctx.a.for_node(for_node).children.clone();
 
     if is_template {
-        let node_children = ctx.a.el(node).children.clone();
-        for c in node_children {
+        // in JS `forNode.children` *is* `node.children`, so every read of the
+        // template's children here sees the structural replacements made
+        // while traversing them
+        for c in children.clone() {
             if ctx.a.is(c, NodeType::Element) {
                 if let Some(k) = find_prop(&ctx.a, c, "key", false, false) {
                     let loc = ctx.a.loc(k).clone();
@@ -196,11 +198,8 @@ pub fn exit_for(
         children.len() != 1 || !ctx.a.is(children[0], NodeType::Element);
     let slot_outlet = if is_slot_outlet(&ctx.a, node) {
         Some(node)
-    } else if is_template
-        && ctx.a.el(node).children.len() == 1
-        && is_slot_outlet(&ctx.a, ctx.a.el(node).children[0])
-    {
-        Some(ctx.a.el(node).children[0])
+    } else if is_template && children.len() == 1 && is_slot_outlet(&ctx.a, children[0]) {
+        Some(children[0])
     } else {
         None
     };
@@ -219,7 +218,7 @@ pub fn exit_for(
     } else if need_fragment_wrapper {
         let tag = ctx.helper_node(RuntimeHelper::FRAGMENT);
         let props = key_property.map(|kp| ctx.a.create_object_expression(vec![kp]));
-        let children_ref = ctx.a.children_ref(node);
+        let children_ref = ctx.a.children_ref(for_node);
         child_block = create_vnode_call(
             Some(ctx),
             tag,
