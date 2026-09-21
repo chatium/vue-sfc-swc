@@ -384,3 +384,35 @@ fn compile_script() {
     );
     report("compile-script", cases.len(), failed);
 }
+
+#[test]
+fn postcss_roundtrip() {
+    let cases = load("postcss-roundtrip");
+    let mut failed: Vec<(String, String)> = Vec::new();
+    for case in &cases {
+        let input = case["input"].as_str().unwrap();
+        let want_error = case.get("error").is_some();
+        match vue_sfc::sfc::style::postcss::parse::parse(input) {
+            Ok(tree) => {
+                if want_error {
+                    failed.push((input.to_string(), "expected a parse error".into()));
+                    continue;
+                }
+                let got = vue_sfc::sfc::style::postcss::stringify::stringify(&tree);
+                let want = case["output"].as_str().unwrap();
+                if got != want {
+                    failed.push((
+                        input.to_string(),
+                        format!("got:\n{got:?}\nwant:\n{want:?}"),
+                    ));
+                }
+            }
+            Err(e) => {
+                if !want_error {
+                    failed.push((input.to_string(), format!("unexpected error: {e}")));
+                }
+            }
+        }
+    }
+    report("postcss-roundtrip", cases.len(), failed);
+}

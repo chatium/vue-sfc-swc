@@ -5,4 +5,5 @@ pub mod magic_string;
 pub mod parse;
 pub mod rewrite_default;
 pub mod script;
+pub mod style;
 pub mod template;

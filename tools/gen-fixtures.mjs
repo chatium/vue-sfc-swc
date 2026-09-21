@@ -192,3 +192,18 @@ for (const source of sfcSources) {
 }
 fs.writeFileSync('tests/fixtures/compile-script.json', JSON.stringify(scriptOut))
 console.log(`compile-script: ${scriptOut.length}`)
+
+// --- postcss round-trip -----------------------------------------------------
+const postcss = require('postcss')
+const cssCases = JSON.parse(fs.readFileSync('tests/corpus/css.json', 'utf8'))
+const cssOut = []
+for (const input of cssCases) {
+  try {
+    const root = postcss.parse(input)
+    cssOut.push({ input, output: root.toString() })
+  } catch (e) {
+    cssOut.push({ input, error: String(e.message) })
+  }
+}
+fs.writeFileSync('tests/fixtures/postcss-roundtrip.json', JSON.stringify(cssOut))
+console.log(`postcss-roundtrip: ${cssOut.length}`)
