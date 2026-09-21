@@ -36,7 +36,8 @@ pub struct SfcBlock {
     // script-only
     pub setup: Option<AttrValue>,
     // template-only
-    pub ast: Option<RootNode>,
+    /// the template block's children, in the parse arena
+    pub ast: Option<Vec<NodeId>>,
 }
 
 impl SfcBlock {
@@ -100,20 +101,20 @@ impl Default for SfcParseOptions {
     }
 }
 
-fn has_src(node: &ElementNode) -> bool {
+fn has_src(a: &Arena, node: &ElementNode) -> bool {
     node.props
         .iter()
-        .any(|p| matches!(p, Node::Attribute(a) if a.name == "src"))
+        .any(|p| matches!(a.node(*p), Node::Attribute(attr) if attr.name == "src"))
 }
 
-fn is_empty(node: &ElementNode) -> bool {
-    node.children.iter().all(|c| match c {
+fn is_empty(a: &Arena, node: &ElementNode) -> bool {
+    node.children.iter().all(|c| match a.node(*c) {
         Node::Text(t) => t.content.trim().is_empty(),
         _ => false,
     })
 }
 
-fn create_block(node: &ElementNode, source: &[u16]) -> SfcBlock {
+fn create_block(a: &Arena, node: &ElementNode, source: &[u16]) -> SfcBlock {
     let block_type = node.tag.clone();
     let loc = node.inner_loc.clone().unwrap_or_else(loc_stub);
     let content = slice_utf16(source, loc.start.offset.max(0) as usize, loc.end.offset.max(0) as usize);
@@ -130,17 +131,17 @@ fn create_block(node: &ElementNode, source: &[u16]) -> SfcBlock {
         ast: None,
     };
     for p in &node.props {
-        if let Node::Attribute(a) = p {
-            let name = a.name.clone();
-            let value = match &a.value {
+        if let Node::Attribute(attr) = a.node(*p) {
+            let name = attr.name.clone();
+            let value = match &attr.value {
                 Some(v) if !v.content.is_empty() => AttrValue::Str(v.content.clone()),
                 _ => AttrValue::True,
             };
             block.attrs.push((name.clone(), value.clone()));
             if name == "lang" {
-                block.lang = a.value.as_ref().map(|v| v.content.clone());
+                block.lang = attr.value.as_ref().map(|v| v.content.clone());
             } else if name == "src" {
-                block.src = a.value.as_ref().map(|v| v.content.clone());
+                block.src = attr.value.as_ref().map(|v| v.content.clone());
             } else if block_type == "style" {
                 if name == "scoped" {
                     block.scoped = true;
@@ -188,29 +189,37 @@ pub fn parse(source: &str, options: SfcParseOptions) -> SfcParseResult {
     parser_options.prefix_identifiers = true;
 
     let parsed = base_parse(source, parser_options);
+    let arena = &parsed.arena;
     let mut errors: Vec<SfcError> = parsed.errors.into_iter().map(SfcError::from).collect();
 
-    for child in &parsed.root.children {
-        let node = match child {
-            Node::Element(e) => e,
+    let root_children = arena.root(parsed.root).children.clone();
+    for child in &root_children {
+        let node = match arena.node(*child) {
+            Node::Element(e) => e.as_ref(),
             _ => continue,
         };
-        if options.ignore_empty && node.tag != "template" && is_empty(node) && !has_src(node) {
+        if options.ignore_empty
+            && node.tag != "template"
+            && is_empty(arena, node)
+            && !has_src(arena, node)
+        {
             continue;
         }
         match node.tag.as_str() {
             "template" => {
                 if descriptor.template.is_none() {
-                    let mut block = create_block(node, &units);
+                    let mut block = create_block(arena, node, &units);
                     if block.attr("src").is_none() {
-                        block.ast = Some(create_root(node.children.clone(), source.to_string()));
+                        block.ast = Some(node.children.clone());
                     }
                     if block.attr("functional").is_some() {
                         let loc = node
                             .props
                             .iter()
-                            .find(|p| matches!(p, Node::Attribute(a) if a.name == "functional"))
-                            .map(|p| p.loc().clone());
+                            .find(|p| {
+                                matches!(arena.node(**p), Node::Attribute(a) if a.name == "functional")
+                            })
+                            .map(|p| arena.loc(*p).clone());
                         errors.push(SfcError {
                             message: "<template functional> is no longer supported in Vue 3, since \
 functional components no longer have significant performance difference from stateful ones. \
@@ -226,7 +235,7 @@ Just use a normal <template> instead."
                 }
             }
             "script" => {
-                let block = create_block(node, &units);
+                let block = create_block(arena, node, &units);
                 let is_setup = block.attr("setup").is_some();
                 if is_setup && descriptor.script_setup.is_none() {
                     descriptor.script_setup = Some(block);
@@ -237,7 +246,7 @@ Just use a normal <template> instead."
                 }
             }
             "style" => {
-                let block = create_block(node, &units);
+                let block = create_block(arena, node, &units);
                 if block.attr("vars").is_some() {
                     errors.push(SfcError {
                         message: "<style vars> has been replaced by a new proposal: \
@@ -249,7 +258,9 @@ https://github.com/vuejs/rfcs/pull/231"
                 }
                 descriptor.styles.push(block);
             }
-            _ => descriptor.custom_blocks.push(create_block(node, &units)),
+            _ => descriptor
+                .custom_blocks
+                .push(create_block(arena, node, &units)),
         }
     }
 

@@ -198,26 +198,31 @@ impl ExpAst {
     }
 }
 
+/// Index into [`Arena`]. Node identity is what the JS compiler relies on:
+/// codegen nodes alias template nodes and their children arrays, and later
+/// passes mutate through those aliases.
+pub type NodeId = u32;
+
 #[derive(Debug, Clone)]
 pub struct RootNode {
     pub source: String,
-    pub children: Vec<Node>,
+    pub children: Vec<NodeId>,
     /// insertion-ordered, like the JS `Set`
     pub helpers: Vec<RuntimeHelper>,
     pub components: Vec<String>,
     pub directives: Vec<String>,
-    pub hoists: Vec<Option<Node>>,
+    pub hoists: Vec<Option<NodeId>>,
     pub imports: Vec<ImportItem>,
-    pub cached: Vec<Option<Node>>,
+    pub cached: Vec<Option<NodeId>>,
     pub temps: usize,
-    pub codegen_node: Option<Node>,
+    pub codegen_node: Option<NodeId>,
     pub transformed: bool,
     pub loc: SourceLocation,
 }
 
 #[derive(Debug, Clone)]
 pub struct ImportItem {
-    pub exp: Node,
+    pub exp: NodeId,
     pub path: String,
 }
 
@@ -226,11 +231,11 @@ pub struct ElementNode {
     pub ns: Namespace,
     pub tag: String,
     pub tag_type: ElementType,
-    pub props: Vec<Node>,
-    pub children: Vec<Node>,
+    pub props: Vec<NodeId>,
+    pub children: Vec<NodeId>,
     pub is_self_closing: bool,
     pub inner_loc: Option<SourceLocation>,
-    pub codegen_node: Option<Node>,
+    pub codegen_node: Option<NodeId>,
     pub loc: SourceLocation,
 }
 
@@ -258,9 +263,9 @@ pub struct AttributeNode {
 pub struct DirectiveNode {
     pub name: String,
     pub raw_name: Option<String>,
-    pub exp: Option<Node>,
-    pub arg: Option<Node>,
-    pub modifiers: Vec<Node>,
+    pub exp: Option<NodeId>,
+    pub arg: Option<NodeId>,
+    pub modifiers: Vec<NodeId>,
     pub for_parse_result: Option<ForParseResult>,
     pub loc: SourceLocation,
 }
@@ -280,13 +285,13 @@ pub struct SimpleExpressionNode {
 
 #[derive(Debug, Clone)]
 pub struct InterpolationNode {
-    pub content: Node,
+    pub content: NodeId,
     pub loc: SourceLocation,
 }
 
 #[derive(Debug, Clone)]
 pub struct CompoundExpressionNode {
-    pub children: Vec<Node>,
+    pub children: Vec<NodeId>,
     pub ast: ExpAst,
     pub identifiers: Vec<String>,
     pub is_handler_key: bool,
@@ -295,58 +300,58 @@ pub struct CompoundExpressionNode {
 
 #[derive(Debug, Clone)]
 pub struct IfNode {
-    pub branches: Vec<Node>,
-    pub codegen_node: Option<Node>,
+    pub branches: Vec<NodeId>,
+    pub codegen_node: Option<NodeId>,
     pub loc: SourceLocation,
 }
 
 #[derive(Debug, Clone)]
 pub struct IfBranchNode {
-    pub condition: Option<Node>,
-    pub children: Vec<Node>,
-    pub user_key: Option<Node>,
+    pub condition: Option<NodeId>,
+    pub children: Vec<NodeId>,
+    pub user_key: Option<NodeId>,
     pub is_template_if: bool,
     pub loc: SourceLocation,
 }
 
 #[derive(Debug, Clone)]
 pub struct ForParseResult {
-    pub source: Node,
-    pub value: Option<Node>,
-    pub key: Option<Node>,
-    pub index: Option<Node>,
+    pub source: NodeId,
+    pub value: Option<NodeId>,
+    pub key: Option<NodeId>,
+    pub index: Option<NodeId>,
     pub finalized: bool,
 }
 
 #[derive(Debug, Clone)]
 pub struct ForNode {
-    pub source: Node,
-    pub value_alias: Option<Node>,
-    pub key_alias: Option<Node>,
-    pub object_index_alias: Option<Node>,
+    pub source: NodeId,
+    pub value_alias: Option<NodeId>,
+    pub key_alias: Option<NodeId>,
+    pub object_index_alias: Option<NodeId>,
     pub parse_result: ForParseResult,
-    pub children: Vec<Node>,
-    pub codegen_node: Option<Node>,
+    pub children: Vec<NodeId>,
+    pub codegen_node: Option<NodeId>,
     pub loc: SourceLocation,
 }
 
 #[derive(Debug, Clone)]
 pub struct TextCallNode {
-    pub content: Node,
-    pub codegen_node: Option<Node>,
+    pub content: NodeId,
+    pub codegen_node: Option<NodeId>,
     pub loc: SourceLocation,
 }
 
 #[derive(Debug, Clone)]
 pub struct VNodeCall {
     /// `string | symbol | CallExpression`
-    pub tag: Node,
-    pub props: Option<Node>,
-    pub children: Option<Node>,
+    pub tag: NodeId,
+    pub props: Option<NodeId>,
+    pub children: Option<NodeId>,
     pub patch_flag: Option<i32>,
     /// `string | SimpleExpressionNode`
-    pub dynamic_props: Option<Node>,
-    pub directives: Option<Node>,
+    pub dynamic_props: Option<NodeId>,
+    pub directives: Option<NodeId>,
     pub is_block: bool,
     pub disable_tracking: bool,
     pub is_component: bool,
@@ -356,36 +361,36 @@ pub struct VNodeCall {
 #[derive(Debug, Clone)]
 pub struct CallExpression {
     /// `string | symbol`
-    pub callee: Node,
-    pub arguments: Vec<Node>,
+    pub callee: NodeId,
+    pub arguments: Vec<NodeId>,
     pub loc: SourceLocation,
 }
 
 #[derive(Debug, Clone)]
 pub struct ObjectExpression {
-    pub properties: Vec<Node>,
+    pub properties: Vec<NodeId>,
     pub loc: SourceLocation,
 }
 
 #[derive(Debug, Clone)]
 pub struct Property {
-    pub key: Node,
-    pub value: Node,
+    pub key: NodeId,
+    pub value: NodeId,
     pub loc: SourceLocation,
 }
 
 #[derive(Debug, Clone)]
 pub struct ArrayExpression {
-    pub elements: Vec<Node>,
+    pub elements: Vec<NodeId>,
     pub loc: SourceLocation,
 }
 
 #[derive(Debug, Clone)]
 pub struct FunctionExpression {
     /// `ExpressionNode | string | (ExpressionNode | string)[] | undefined`
-    pub params: Option<Node>,
-    pub returns: Option<Node>,
-    pub body: Option<Node>,
+    pub params: Option<NodeId>,
+    pub returns: Option<NodeId>,
+    pub body: Option<NodeId>,
     pub newline: bool,
     pub is_slot: bool,
     pub loc: SourceLocation,
@@ -393,9 +398,9 @@ pub struct FunctionExpression {
 
 #[derive(Debug, Clone)]
 pub struct ConditionalExpression {
-    pub test: Node,
-    pub consequent: Node,
-    pub alternate: Node,
+    pub test: NodeId,
+    pub consequent: NodeId,
+    pub alternate: NodeId,
     pub newline: bool,
     pub loc: SourceLocation,
 }
@@ -403,7 +408,7 @@ pub struct ConditionalExpression {
 #[derive(Debug, Clone)]
 pub struct CacheExpression {
     pub index: usize,
-    pub value: Node,
+    pub value: NodeId,
     pub need_pause_tracking: bool,
     pub in_v_once: bool,
     pub need_array_spread: bool,
@@ -437,15 +442,18 @@ pub enum Node {
     Str(String),
     /// a runtime-helper symbol member of a heterogeneous array
     Sym(RuntimeHelper),
-    /// a nested `TemplateChildNode[]` used where one member is expected
-    Nodes(Vec<Node>),
-    /// JS `undefined` / removed node
+    /// an owned list (a JS array that is not shared with any node)
+    Nodes(Vec<NodeId>),
+    /// an alias of another node's `children` array — the JS compiler passes
+    /// those arrays around by reference and mutates them in place
+    ChildrenRef(NodeId),
+    /// JS `undefined`
     #[default]
     None,
 }
 
 /// `NodeTypes` ordinals, needed wherever the JS code compares `node.type`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[allow(dead_code)]
 pub enum NodeType {
     Root = 0,
@@ -500,10 +508,6 @@ impl Node {
         }
     }
 
-    pub fn is_none(&self) -> bool {
-        matches!(self, Node::None)
-    }
-
     pub fn loc(&self) -> &SourceLocation {
         match self {
             Node::Root(n) => &n.loc,
@@ -530,197 +534,343 @@ impl Node {
             _ => &STUB_LOC,
         }
     }
-
-    // --- narrowing helpers (panic on mismatch: the JS code is already typed) ---
-
-    pub fn as_element(&self) -> &ElementNode {
-        match self {
-            Node::Element(e) => e,
-            _ => panic!("expected element node"),
-        }
-    }
-    pub fn as_element_mut(&mut self) -> &mut ElementNode {
-        match self {
-            Node::Element(e) => e,
-            _ => panic!("expected element node"),
-        }
-    }
-    pub fn as_simple_exp(&self) -> &SimpleExpressionNode {
-        match self {
-            Node::SimpleExpression(e) => e,
-            _ => panic!("expected simple expression"),
-        }
-    }
-    pub fn as_simple_exp_mut(&mut self) -> &mut SimpleExpressionNode {
-        match self {
-            Node::SimpleExpression(e) => e,
-            _ => panic!("expected simple expression"),
-        }
-    }
-    pub fn as_directive(&self) -> &DirectiveNode {
-        match self {
-            Node::Directive(d) => d,
-            _ => panic!("expected directive"),
-        }
-    }
-    pub fn as_attribute(&self) -> &AttributeNode {
-        match self {
-            Node::Attribute(a) => a,
-            _ => panic!("expected attribute"),
-        }
-    }
-    pub fn as_text(&self) -> &TextNode {
-        match self {
-            Node::Text(t) => t,
-            _ => panic!("expected text"),
-        }
-    }
-    pub fn as_root(&self) -> &RootNode {
-        match self {
-            Node::Root(r) => r,
-            _ => panic!("expected root"),
-        }
-    }
-    pub fn as_root_mut(&mut self) -> &mut RootNode {
-        match self {
-            Node::Root(r) => r,
-            _ => panic!("expected root"),
-        }
-    }
 }
 
 static STUB_LOC: std::sync::LazyLock<SourceLocation> = std::sync::LazyLock::new(loc_stub);
 
-// --- constructors -----------------------------------------------------------
+/// Owns every node. Ids are stable; nothing is ever freed.
+#[derive(Debug, Default)]
+pub struct Arena {
+    nodes: Vec<Node>,
+}
 
-pub fn create_root(children: Vec<Node>, source: String) -> RootNode {
-    RootNode {
-        source,
-        children,
-        helpers: Vec::new(),
-        components: Vec::new(),
-        directives: Vec::new(),
-        hoists: Vec::new(),
-        imports: Vec::new(),
-        cached: Vec::new(),
-        temps: 0,
-        codegen_node: None,
-        transformed: false,
-        loc: loc_stub(),
+macro_rules! typed_accessors {
+    ($($get:ident, $get_mut:ident, $variant:ident, $ty:ty);* $(;)?) => {
+        impl Arena {
+            $(
+                #[track_caller]
+                pub fn $get(&self, id: NodeId) -> &$ty {
+                    match self.node(id) {
+                        Node::$variant(n) => n,
+                        other => panic!(concat!("expected ", stringify!($variant), ", got {:?}"), other.node_type()),
+                    }
+                }
+                #[track_caller]
+                pub fn $get_mut(&mut self, id: NodeId) -> &mut $ty {
+                    match self.node_mut(id) {
+                        Node::$variant(n) => n,
+                        other => panic!(concat!("expected ", stringify!($variant), ", got {:?}"), other.node_type()),
+                    }
+                }
+            )*
+        }
+    };
+}
+
+typed_accessors! {
+    root, root_mut, Root, RootNode;
+    el, el_mut, Element, ElementNode;
+    text, text_mut, Text, TextNode;
+    comment, comment_mut, Comment, CommentNode;
+    exp, exp_mut, SimpleExpression, SimpleExpressionNode;
+    interp, interp_mut, Interpolation, InterpolationNode;
+    attr, attr_mut, Attribute, AttributeNode;
+    dir, dir_mut, Directive, DirectiveNode;
+    compound, compound_mut, CompoundExpression, CompoundExpressionNode;
+    if_node, if_node_mut, If, IfNode;
+    branch, branch_mut, IfBranch, IfBranchNode;
+    for_node, for_node_mut, For, ForNode;
+    text_call, text_call_mut, TextCall, TextCallNode;
+    vnode, vnode_mut, VNodeCall, VNodeCall;
+    call, call_mut, CallExpression, CallExpression;
+    obj, obj_mut, ObjectExpression, ObjectExpression;
+    prop, prop_mut, Property, Property;
+    array, array_mut, ArrayExpression, ArrayExpression;
+    func, func_mut, FunctionExpression, FunctionExpression;
+    cond, cond_mut, ConditionalExpression, ConditionalExpression;
+    cache, cache_mut, CacheExpression, CacheExpression;
+}
+
+impl Arena {
+    pub fn new() -> Self {
+        Arena { nodes: Vec::new() }
     }
-}
 
-pub fn create_simple_expression(
-    content: impl Into<String>,
-    is_static: bool,
-    loc: SourceLocation,
-    const_type: ConstantType,
-) -> Node {
-    Node::SimpleExpression(Box::new(SimpleExpressionNode {
-        content: content.into(),
-        is_static,
-        const_type: if is_static {
-            ConstantType::CanStringify
-        } else {
-            const_type
-        },
-        ast: ExpAst::Undefined,
-        hoisted: None,
-        identifiers: Vec::new(),
-        is_handler_key: false,
-        loc,
-    }))
-}
+    pub fn add(&mut self, node: Node) -> NodeId {
+        self.nodes.push(node);
+        (self.nodes.len() - 1) as NodeId
+    }
 
-/// `createSimpleExpression(content, isStatic)` with default loc/constType.
-pub fn simple_exp(content: impl Into<String>, is_static: bool) -> Node {
-    create_simple_expression(content, is_static, loc_stub(), ConstantType::NotConstant)
-}
+    #[track_caller]
+    pub fn node(&self, id: NodeId) -> &Node {
+        &self.nodes[id as usize]
+    }
 
-pub fn create_compound_expression(children: Vec<Node>, loc: SourceLocation) -> Node {
-    Node::CompoundExpression(Box::new(CompoundExpressionNode {
-        children,
-        ast: ExpAst::Undefined,
-        identifiers: Vec::new(),
-        is_handler_key: false,
-        loc,
-    }))
-}
+    #[track_caller]
+    pub fn node_mut(&mut self, id: NodeId) -> &mut Node {
+        &mut self.nodes[id as usize]
+    }
 
-pub fn create_object_property(key: Node, value: Node) -> Node {
-    Node::Property(Box::new(Property {
-        key,
-        value,
-        loc: loc_stub(),
-    }))
-}
+    pub fn node_type(&self, id: NodeId) -> NodeType {
+        self.node(id).node_type()
+    }
 
-pub fn create_object_expression(properties: Vec<Node>, loc: SourceLocation) -> Node {
-    Node::ObjectExpression(Box::new(ObjectExpression { properties, loc }))
-}
+    pub fn loc(&self, id: NodeId) -> &SourceLocation {
+        self.node(id).loc()
+    }
 
-pub fn create_array_expression(elements: Vec<Node>, loc: SourceLocation) -> Node {
-    Node::ArrayExpression(Box::new(ArrayExpression { elements, loc }))
-}
+    pub fn is(&self, id: NodeId, t: NodeType) -> bool {
+        self.node_type(id) == t
+    }
 
-pub fn create_call_expression(callee: Node, arguments: Vec<Node>, loc: SourceLocation) -> Node {
-    Node::CallExpression(Box::new(CallExpression {
-        callee,
-        arguments,
-        loc,
-    }))
-}
+    /// `node.children` for the container types, or the list an array-valued
+    /// node stands for.
+    #[track_caller]
+    pub fn list(&self, id: NodeId) -> &Vec<NodeId> {
+        match self.node(id) {
+            Node::Nodes(v) => v,
+            Node::ChildrenRef(owner) => self.children_of(*owner),
+            Node::Root(r) => &r.children,
+            Node::Element(e) => &e.children,
+            Node::IfBranch(b) => &b.children,
+            Node::For(f) => &f.children,
+            other => panic!("not a list node: {:?}", other.node_type()),
+        }
+    }
 
-pub fn create_function_expression(
-    params: Option<Node>,
-    returns: Option<Node>,
-    newline: bool,
-    is_slot: bool,
-    loc: SourceLocation,
-) -> Node {
-    Node::FunctionExpression(Box::new(FunctionExpression {
-        params,
-        returns,
-        body: None,
-        newline,
-        is_slot,
-        loc,
-    }))
-}
+    #[track_caller]
+    pub fn list_mut(&mut self, id: NodeId) -> &mut Vec<NodeId> {
+        let target = match self.node(id) {
+            Node::ChildrenRef(owner) => *owner,
+            _ => id,
+        };
+        match self.node_mut(target) {
+            Node::Nodes(v) => v,
+            Node::Root(r) => &mut r.children,
+            Node::Element(e) => &mut e.children,
+            Node::IfBranch(b) => &mut b.children,
+            Node::For(f) => &mut f.children,
+            other => panic!("not a list node: {:?}", other.node_type()),
+        }
+    }
 
-pub fn create_conditional_expression(
-    test: Node,
-    consequent: Node,
-    alternate: Node,
-    newline: bool,
-) -> Node {
-    Node::ConditionalExpression(Box::new(ConditionalExpression {
-        test,
-        consequent,
-        alternate,
-        newline,
-        loc: loc_stub(),
-    }))
-}
+    #[track_caller]
+    pub fn children_of(&self, id: NodeId) -> &Vec<NodeId> {
+        match self.node(id) {
+            Node::Root(r) => &r.children,
+            Node::Element(e) => &e.children,
+            Node::IfBranch(b) => &b.children,
+            Node::For(f) => &f.children,
+            other => panic!("no children on {:?}", other.node_type()),
+        }
+    }
 
-pub fn create_cache_expression(
-    index: usize,
-    value: Node,
-    need_pause_tracking: bool,
-    in_v_once: bool,
-) -> Node {
-    Node::CacheExpression(Box::new(CacheExpression {
-        index,
-        value,
-        need_pause_tracking,
-        in_v_once,
-        need_array_spread: false,
-        loc: loc_stub(),
-    }))
-}
+    #[track_caller]
+    pub fn children_of_mut(&mut self, id: NodeId) -> &mut Vec<NodeId> {
+        match self.node_mut(id) {
+            Node::Root(r) => &mut r.children,
+            Node::Element(e) => &mut e.children,
+            Node::IfBranch(b) => &mut b.children,
+            Node::For(f) => &mut f.children,
+            other => panic!("no children on {:?}", other.node_type()),
+        }
+    }
 
-pub fn create_interpolation(content: Node, loc: SourceLocation) -> Node {
-    Node::Interpolation(Box::new(InterpolationNode { content, loc }))
+    pub fn is_list_like(&self, id: NodeId) -> bool {
+        matches!(self.node(id), Node::Nodes(_) | Node::ChildrenRef(_))
+    }
+
+    pub fn str_of(&self, id: NodeId) -> Option<&str> {
+        match self.node(id) {
+            Node::Str(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    pub fn sym_of(&self, id: NodeId) -> Option<RuntimeHelper> {
+        match self.node(id) {
+            Node::Sym(h) => Some(*h),
+            _ => None,
+        }
+    }
+
+    // --- constructors -------------------------------------------------------
+
+    pub fn nodes(&mut self, list: Vec<NodeId>) -> NodeId {
+        self.add(Node::Nodes(list))
+    }
+
+    pub fn children_ref(&mut self, owner: NodeId) -> NodeId {
+        self.add(Node::ChildrenRef(owner))
+    }
+
+    pub fn string(&mut self, s: impl Into<String>) -> NodeId {
+        self.add(Node::Str(s.into()))
+    }
+
+    pub fn sym(&mut self, h: RuntimeHelper) -> NodeId {
+        self.add(Node::Sym(h))
+    }
+
+    pub fn create_root(&mut self, children: Vec<NodeId>, source: String) -> NodeId {
+        self.add(Node::Root(Box::new(RootNode {
+            source,
+            children,
+            helpers: Vec::new(),
+            components: Vec::new(),
+            directives: Vec::new(),
+            hoists: Vec::new(),
+            imports: Vec::new(),
+            cached: Vec::new(),
+            temps: 0,
+            codegen_node: None,
+            transformed: false,
+            loc: loc_stub(),
+        })))
+    }
+
+    pub fn create_simple_expression(
+        &mut self,
+        content: impl Into<String>,
+        is_static: bool,
+        loc: SourceLocation,
+        const_type: ConstantType,
+    ) -> NodeId {
+        self.add(Node::SimpleExpression(Box::new(SimpleExpressionNode {
+            content: content.into(),
+            is_static,
+            const_type: if is_static {
+                ConstantType::CanStringify
+            } else {
+                const_type
+            },
+            ast: ExpAst::Undefined,
+            hoisted: None,
+            identifiers: Vec::new(),
+            is_handler_key: false,
+            loc,
+        })))
+    }
+
+    /// `createSimpleExpression(content, isStatic)` with default loc/constType.
+    pub fn simple_exp(&mut self, content: impl Into<String>, is_static: bool) -> NodeId {
+        self.create_simple_expression(content, is_static, loc_stub(), ConstantType::NotConstant)
+    }
+
+    pub fn create_compound_expression(
+        &mut self,
+        children: Vec<NodeId>,
+        loc: SourceLocation,
+    ) -> NodeId {
+        self.add(Node::CompoundExpression(Box::new(CompoundExpressionNode {
+            children,
+            ast: ExpAst::Undefined,
+            identifiers: Vec::new(),
+            is_handler_key: false,
+            loc,
+        })))
+    }
+
+    pub fn create_object_property(&mut self, key: NodeId, value: NodeId) -> NodeId {
+        self.add(Node::Property(Box::new(Property {
+            key,
+            value,
+            loc: loc_stub(),
+        })))
+    }
+
+    /// `createObjectProperty(stringKey, value)`
+    pub fn create_object_property_str(&mut self, key: &str, value: NodeId) -> NodeId {
+        let k = self.simple_exp(key, true);
+        self.create_object_property(k, value)
+    }
+
+    pub fn create_object_expression(&mut self, properties: Vec<NodeId>) -> NodeId {
+        self.add(Node::ObjectExpression(Box::new(ObjectExpression {
+            properties,
+            loc: loc_stub(),
+        })))
+    }
+
+    pub fn create_array_expression(&mut self, elements: Vec<NodeId>) -> NodeId {
+        self.add(Node::ArrayExpression(Box::new(ArrayExpression {
+            elements,
+            loc: loc_stub(),
+        })))
+    }
+
+    pub fn create_call_expression(&mut self, callee: NodeId, arguments: Vec<NodeId>) -> NodeId {
+        self.add(Node::CallExpression(Box::new(CallExpression {
+            callee,
+            arguments,
+            loc: loc_stub(),
+        })))
+    }
+
+    pub fn create_call_helper(&mut self, callee: RuntimeHelper, arguments: Vec<NodeId>) -> NodeId {
+        let c = self.sym(callee);
+        self.create_call_expression(c, arguments)
+    }
+
+    pub fn create_function_expression(
+        &mut self,
+        params: Option<NodeId>,
+        returns: Option<NodeId>,
+        newline: bool,
+        is_slot: bool,
+        loc: SourceLocation,
+    ) -> NodeId {
+        self.add(Node::FunctionExpression(Box::new(FunctionExpression {
+            params,
+            returns,
+            body: None,
+            newline,
+            is_slot,
+            loc,
+        })))
+    }
+
+    pub fn create_conditional_expression(
+        &mut self,
+        test: NodeId,
+        consequent: NodeId,
+        alternate: NodeId,
+        newline: bool,
+    ) -> NodeId {
+        self.add(Node::ConditionalExpression(Box::new(
+            ConditionalExpression {
+                test,
+                consequent,
+                alternate,
+                newline,
+                loc: loc_stub(),
+            },
+        )))
+    }
+
+    pub fn create_cache_expression(
+        &mut self,
+        index: usize,
+        value: NodeId,
+        need_pause_tracking: bool,
+        in_v_once: bool,
+    ) -> NodeId {
+        self.add(Node::CacheExpression(Box::new(CacheExpression {
+            index,
+            value,
+            need_pause_tracking,
+            in_v_once,
+            need_array_spread: false,
+            loc: loc_stub(),
+        })))
+    }
+
+    pub fn create_interpolation(&mut self, content: NodeId, loc: SourceLocation) -> NodeId {
+        self.add(Node::Interpolation(Box::new(InterpolationNode {
+            content,
+            loc,
+        })))
+    }
 }
 
 pub fn get_vnode_helper(ssr: bool, is_component: bool) -> RuntimeHelper {

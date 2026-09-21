@@ -19,7 +19,7 @@ fn parse_base() {
     for case in &cases {
         let input = case["input"].as_str().unwrap();
         let result = base_parse(input, ParserOptions::default());
-        let got = serialize::root(&result.root);
+        let got = serialize::root(&result.arena, result.arena.root(result.root));
         let want = &case["ast"];
         if &got != want {
             failed.push((input.to_string(), first_diff(&got, want, "$")));

@@ -149,7 +149,7 @@ pub struct ParserOptions {
     pub parse_mode: ParseMode,
     pub ns: Namespace,
     pub delimiters: (String, String),
-    pub get_namespace: fn(&str, Option<&ElementNode>, Namespace) -> Namespace,
+    pub get_namespace: fn(&Arena, &str, Option<&ElementNode>, Namespace) -> Namespace,
     pub is_void_tag: fn(&str) -> bool,
     pub is_pre_tag: fn(&str) -> bool,
     pub is_ignore_newline_tag: fn(&str) -> bool,
@@ -165,7 +165,12 @@ pub struct ParserOptions {
 fn no(_: &str) -> bool {
     false
 }
-fn default_get_namespace(_: &str, _: Option<&ElementNode>, ns: Namespace) -> Namespace {
+fn default_get_namespace(
+    _: &Arena,
+    _: &str,
+    _: Option<&ElementNode>,
+    ns: Namespace,
+) -> Namespace {
     ns
 }
 
@@ -226,7 +231,8 @@ pub struct Parser {
 
     // --- parser state ---
     options: ParserOptions,
-    root_children: Vec<Node>,
+    arena: Arena,
+    root_children: Vec<NodeId>,
     stack: Vec<OpenElement>,
     next_open_id: u64,
     current_open_tag: Option<OpenElement>,
@@ -266,6 +272,7 @@ impl Parser {
             sequence_index: 0,
             entity_decoder: EntityDecoder::new(),
             options,
+            arena: Arena::new(),
             root_children: Vec::new(),
             stack: Vec::new(),
             next_open_id: 1,
@@ -1146,59 +1153,62 @@ impl Parser {
     }
 
     fn on_text(&mut self, content: String, start: usize, end: usize) {
-        let merge = matches!(self.current_children_mut().last(), Some(Node::Text(_)));
+        let last = self.current_children().last().copied();
+        let merge = matches!(last, Some(id) if self.arena.is(id, NodeType::Text));
         if merge {
-            let start_off = match self.current_children_mut().last() {
-                Some(Node::Text(t)) => t.loc.start.offset,
-                _ => unreachable!(),
-            };
+            let id = last.unwrap();
+            let start_off = self.arena.text(id).loc.start.offset;
             let end_pos = self.get_pos(end);
             let src = self.get_slice(start_off.max(0) as usize, end);
-            if let Some(Node::Text(t)) = self.current_children_mut().last_mut() {
-                t.content.push_str(&content);
-                t.loc.end = end_pos;
-                t.loc.source = src;
-            }
+            let t = self.arena.text_mut(id);
+            t.content.push_str(&content);
+            t.loc.end = end_pos;
+            t.loc.source = src;
         } else {
             let loc = self.get_loc(start, end);
-            self.current_children_mut()
-                .push(Node::Text(Box::new(TextNode { content, loc })));
+            let id = self.arena.add(Node::Text(Box::new(TextNode { content, loc })));
+            self.current_children_mut().push(id);
         }
     }
 
     fn on_text_at(&mut self, content: String, start_pos: Position, end: usize) {
-        let merge = matches!(self.current_children_mut().last(), Some(Node::Text(_)));
+        let last = self.current_children().last().copied();
+        let merge = matches!(last, Some(id) if self.arena.is(id, NodeType::Text));
         if merge {
-            let start_off = match self.current_children_mut().last() {
-                Some(Node::Text(t)) => t.loc.start.offset,
-                _ => unreachable!(),
-            };
+            let id = last.unwrap();
+            let start_off = self.arena.text(id).loc.start.offset;
             let end_pos = self.get_pos(end);
             let src = self.get_slice(start_off.max(0) as usize, end);
-            if let Some(Node::Text(t)) = self.current_children_mut().last_mut() {
-                t.content.push_str(&content);
-                t.loc.end = end_pos;
-                t.loc.source = src;
-            }
+            let t = self.arena.text_mut(id);
+            t.content.push_str(&content);
+            t.loc.end = end_pos;
+            t.loc.source = src;
         } else {
             let loc = SourceLocation {
                 start: start_pos,
                 end: self.get_pos(end),
                 source: content.clone(),
             };
-            self.current_children_mut()
-                .push(Node::Text(Box::new(TextNode { content, loc })));
+            let id = self.arena.add(Node::Text(Box::new(TextNode { content, loc })));
+            self.current_children_mut().push(id);
         }
     }
 
-    fn current_children_mut(&mut self) -> &mut Vec<Node> {
+    fn current_children(&self) -> &Vec<NodeId> {
+        match self.stack.first() {
+            Some(top) => &top.el.children,
+            None => &self.root_children,
+        }
+    }
+
+    fn current_children_mut(&mut self) -> &mut Vec<NodeId> {
         match self.stack.first_mut() {
             Some(top) => &mut top.el.children,
             None => &mut self.root_children,
         }
     }
 
-    fn add_node(&mut self, node: Node) {
+    fn add_node(&mut self, node: NodeId) {
         self.current_children_mut().push(node);
     }
 
@@ -1229,12 +1239,14 @@ impl Parser {
             ExpParseMode::Normal,
         );
         let loc = self.get_loc(start, end);
-        self.add_node(create_interpolation(content, loc));
+        let id = self.arena.create_interpolation(content, loc);
+        self.add_node(id);
     }
 
     fn on_open_tag_name(&mut self, start: usize, end: usize) {
         let name = self.get_slice(start, end);
         let ns = (self.options.get_namespace)(
+            &self.arena,
             &name,
             self.stack.first().map(|o| &o.el),
             self.options.ns,
@@ -1315,8 +1327,8 @@ impl Parser {
         }
         if found {
             if found_index > 0 {
-                let off = self.stack[0].el.loc.start.offset;
-                self.emit_error(ErrorCode::X_MISSING_END_TAG, off.max(0) as usize);
+                let off = self.stack[0].el.loc.start.offset.max(0) as usize;
+                self.emit_error(ErrorCode::X_MISSING_END_TAG, off);
             }
             for j in 0..=found_index {
                 let el = self.stack.remove(0);
@@ -1369,7 +1381,7 @@ impl Parser {
         } else {
             let loc = self.get_loc_open(start);
             let modifiers = if raw == "." {
-                vec![simple_exp("prop", false)]
+                vec![self.arena.simple_exp("prop", false)]
             } else {
                 Vec::new()
             };
@@ -1387,19 +1399,15 @@ impl Parser {
                 self.in_v_pre = true;
                 self.in_v_pre_tok = true;
                 self.current_v_pre_boundary = self.current_open_tag.as_ref().map(|o| o.id);
-                if let Some(open) = self.current_open_tag.as_mut() {
-                    let props = std::mem::take(&mut open.el.props);
-                    let converted: Vec<Node> = props
-                        .into_iter()
-                        .map(|p| {
-                            if matches!(p, Node::Directive(_)) {
-                                dir_to_attr(p)
-                            } else {
-                                p
-                            }
-                        })
-                        .collect();
-                    open.el.props = converted;
+                let props: Vec<NodeId> = self
+                    .current_open_tag
+                    .as_ref()
+                    .map(|o| o.el.props.clone())
+                    .unwrap_or_default();
+                for id in props {
+                    if self.arena.is(id, NodeType::Directive) {
+                        self.dir_to_attr(id);
+                    }
                 }
             }
         }
@@ -1412,11 +1420,11 @@ impl Parser {
         let arg = self.get_slice(start, end);
         let is_v_pre = matches!(&self.current_prop, Some(Node::Directive(d)) if d.name == "pre");
         if self.in_v_pre && !is_v_pre {
-            if let Some(Node::Attribute(a)) = self.current_prop.as_mut() {
-                a.name.push_str(&arg);
-            }
             let mut loc = match self.current_prop.as_mut() {
-                Some(Node::Attribute(a)) => std::mem::replace(&mut a.name_loc, loc_stub()),
+                Some(Node::Attribute(a)) => {
+                    a.name.push_str(&arg);
+                    std::mem::replace(&mut a.name_loc, loc_stub())
+                }
                 _ => return,
             };
             self.set_loc_end(&mut loc, end);
@@ -1448,12 +1456,12 @@ impl Parser {
         let m = self.get_slice(start, end);
         let is_v_pre = matches!(&self.current_prop, Some(Node::Directive(d)) if d.name == "pre");
         if self.in_v_pre && !is_v_pre {
-            if let Some(Node::Attribute(a)) = self.current_prop.as_mut() {
-                a.name.push('.');
-                a.name.push_str(&m);
-            }
             let mut loc = match self.current_prop.as_mut() {
-                Some(Node::Attribute(a)) => std::mem::replace(&mut a.name_loc, loc_stub()),
+                Some(Node::Attribute(a)) => {
+                    a.name.push('.');
+                    a.name.push_str(&m);
+                    std::mem::replace(&mut a.name_loc, loc_stub())
+                }
                 _ => return,
             };
             self.set_loc_end(&mut loc, end);
@@ -1461,28 +1469,26 @@ impl Parser {
                 a.name_loc = loc;
             }
         } else if matches!(&self.current_prop, Some(Node::Directive(d)) if d.name == "slot") {
-            let mut arg = match self.current_prop.as_mut() {
-                Some(Node::Directive(d)) => match d.arg.take() {
+            let arg = match &self.current_prop {
+                Some(Node::Directive(d)) => match d.arg {
                     Some(a) => a,
                     None => return,
                 },
                 _ => return,
             };
-            if let Node::SimpleExpression(e) = &mut arg {
+            if self.arena.is(arg, NodeType::SimpleExpression) {
+                let e = self.arena.exp_mut(arg);
                 e.content.push('.');
                 e.content.push_str(&m);
                 let mut loc = std::mem::replace(&mut e.loc, loc_stub());
                 self.set_loc_end(&mut loc, end);
-                if let Node::SimpleExpression(e) = &mut arg {
-                    e.loc = loc;
-                }
-            }
-            if let Some(Node::Directive(d)) = self.current_prop.as_mut() {
-                d.arg = Some(arg);
+                self.arena.exp_mut(arg).loc = loc;
             }
         } else {
             let loc = self.get_loc(start, end);
-            let exp = create_simple_expression(m, true, loc, ConstantType::NotConstant);
+            let exp = self
+                .arena
+                .create_simple_expression(m, true, loc, ConstantType::NotConstant);
             if let Some(Node::Directive(d)) = self.current_prop.as_mut() {
                 d.modifiers.push(exp);
             }
@@ -1511,25 +1517,23 @@ impl Parser {
 
     fn on_attrib_name_end(&mut self, end: usize) {
         let start = match &self.current_prop {
-            Some(p) => p.loc().start.offset,
+            Some(p) => p.loc().start.offset.max(0) as usize,
             None => return,
         };
-        let start = start.max(0) as usize;
         let name = self.get_slice(start, end);
         if let Some(Node::Directive(d)) = self.current_prop.as_mut() {
             d.raw_name = Some(name.clone());
         }
-        let dup = self
+        let props: Vec<NodeId> = self
             .current_open_tag
             .as_ref()
-            .map(|o| {
-                o.el.props.iter().any(|p| match p {
-                    Node::Directive(d) => d.raw_name.as_deref() == Some(name.as_str()),
-                    Node::Attribute(a) => a.name == name,
-                    _ => false,
-                })
-            })
-            .unwrap_or(false);
+            .map(|o| o.el.props.clone())
+            .unwrap_or_default();
+        let dup = props.iter().any(|id| match self.arena.node(*id) {
+            Node::Directive(d) => d.raw_name.as_deref() == Some(name.as_str()),
+            Node::Attribute(a) => a.name == name,
+            _ => false,
+        });
         if dup {
             self.emit_error(ErrorCode::DUPLICATE_ATTRIBUTE, start);
         }
@@ -1541,7 +1545,7 @@ impl Parser {
             {
                 let start_off = prop.loc().start.offset.max(0) as usize;
                 let pos = self.get_pos(end);
-                let src = self.get_slice(start_off.max(0) as usize, end);
+                let src = self.get_slice(start_off, end);
                 let loc: &mut SourceLocation = match &mut prop {
                     Node::Attribute(a) => &mut a.loc,
                     Node::Directive(d) => &mut d.loc,
@@ -1555,7 +1559,10 @@ impl Parser {
                 let mut attr_value = String::from_utf16_lossy(&self.current_attr_value);
                 let is_attr = matches!(prop, Node::Attribute(_));
                 if is_attr {
-                    let name = prop.as_attribute().name.clone();
+                    let name = match &prop {
+                        Node::Attribute(a) => a.name.clone(),
+                        _ => unreachable!(),
+                    };
                     if name == "class" {
                         attr_value = condense(&attr_value).trim().to_string();
                     }
@@ -1588,7 +1595,10 @@ impl Parser {
                         self.enter_rcdata(to_char_codes("</template"), SeqKind::Custom, 0);
                     }
                 } else {
-                    let dir_name = prop.as_directive().name.clone();
+                    let dir_name = match &prop {
+                        Node::Directive(d) => d.name.clone(),
+                        _ => unreachable!(),
+                    };
                     let mut exp_parse_mode = ExpParseMode::Normal;
                     if dir_name == "for" {
                         exp_parse_mode = ExpParseMode::Skip;
@@ -1609,7 +1619,7 @@ impl Parser {
                         exp_parse_mode,
                     );
                     let for_result = if dir_name == "for" {
-                        self.parse_for_expression(&exp)
+                        self.parse_for_expression(exp)
                     } else {
                         None
                     };
@@ -1622,8 +1632,9 @@ impl Parser {
 
             let skip = matches!(&prop, Node::Directive(d) if d.name == "pre");
             if !skip {
+                let id = self.arena.add(prop);
                 if let Some(o) = self.current_open_tag.as_mut() {
-                    o.el.props.push(prop);
+                    o.el.props.push(id);
                 }
             }
         }
@@ -1636,7 +1647,10 @@ impl Parser {
         if self.options.comments {
             let content = self.get_slice(start, end);
             let loc = self.get_loc(start.saturating_sub(4), end + 3);
-            self.add_node(Node::Comment(Box::new(CommentNode { content, loc })));
+            let id = self
+                .arena
+                .add(Node::Comment(Box::new(CommentNode { content, loc })));
+            self.add_node(id);
         }
     }
 
@@ -1723,7 +1737,7 @@ impl Parser {
 
         if sfc_root {
             let inner_end = if let Some(last) = el.children.last() {
-                last.loc().end
+                self.arena.loc(*last).end
             } else {
                 el.inner_loc.as_ref().unwrap().start
             };
@@ -1743,7 +1757,7 @@ impl Parser {
         if !self.in_v_pre {
             if el.tag == "slot" {
                 el.tag_type = ElementType::Slot;
-            } else if is_fragment_template(&el) {
+            } else if self.is_fragment_template(&el) {
                 el.tag_type = ElementType::Template;
             } else if self.is_component(&el) {
                 el.tag_type = ElementType::Component;
@@ -1756,11 +1770,14 @@ impl Parser {
         }
 
         if el.ns == Namespace::Html && (self.options.is_ignore_newline_tag)(&el.tag) {
-            if let Some(Node::Text(first)) = el.children.first_mut() {
-                if let Some(rest) = first.content.strip_prefix("\r\n") {
-                    first.content = rest.to_string();
-                } else if let Some(rest) = first.content.strip_prefix('\n') {
-                    first.content = rest.to_string();
+            if let Some(first) = el.children.first().copied() {
+                if self.arena.is(first, NodeType::Text) {
+                    let t = self.arena.text_mut(first);
+                    if let Some(rest) = t.content.strip_prefix("\r\n") {
+                        t.content = rest.to_string();
+                    } else if let Some(rest) = t.content.strip_prefix('\n') {
+                        t.content = rest.to_string();
+                    }
                 }
             }
         }
@@ -1782,7 +1799,53 @@ impl Parser {
             self.in_xml = false;
         }
 
-        self.add_node(Node::Element(Box::new(el)));
+        let node_id = self.arena.add(Node::Element(Box::new(el)));
+        self.add_node(node_id);
+    }
+
+    /// `dirToAttr` — converts an already-parsed directive prop into a plain
+    /// attribute (used when `v-pre` is seen after other props).
+    fn dir_to_attr(&mut self, id: NodeId) {
+        let d = match std::mem::take(self.arena.node_mut(id)) {
+            Node::Directive(d) => *d,
+            other => {
+                *self.arena.node_mut(id) = other;
+                return;
+            }
+        };
+        let raw_name = d.raw_name.clone().unwrap_or_default();
+        let name_start = d.loc.start.offset;
+        let name_loc = SourceLocation {
+            start: d.loc.start,
+            end: Position {
+                offset: name_start + utf16_len(&raw_name) as i64,
+                line: d.loc.start.line,
+                column: d.loc.start.column + utf16_len(&raw_name) as i64,
+            },
+            source: self.get_slice(
+                name_start.max(0) as usize,
+                (name_start + utf16_len(&raw_name) as i64).max(0) as usize,
+            ),
+        };
+        let mut attr = AttributeNode {
+            name: raw_name,
+            name_loc,
+            value: None,
+            loc: d.loc.clone(),
+        };
+        if let Some(exp) = d.exp {
+            let e = self.arena.exp(exp);
+            let mut loc = e.loc.clone();
+            let content = e.content.clone();
+            if loc.end.offset < d.loc.end.offset {
+                loc.start.offset -= 1;
+                loc.start.column -= 1;
+                loc.end.offset += 1;
+                loc.end.column += 1;
+            }
+            attr.value = Some(TextNode { content, loc });
+        }
+        *self.arena.node_mut(id) = Node::Attribute(Box::new(attr));
     }
 
     fn look_ahead(&self, index: usize, c: u32) -> usize {
@@ -1799,6 +1862,19 @@ impl Parser {
             i -= 1;
         }
         i.max(0) as usize
+    }
+
+    fn is_fragment_template(&self, el: &ElementNode) -> bool {
+        if el.tag == "template" {
+            for p in &el.props {
+                if let Node::Directive(d) = self.arena.node(*p) {
+                    if matches!(d.name.as_str(), "if" | "else" | "else-if" | "for" | "slot") {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
     }
 
     fn is_component(&self, el: &ElementNode) -> bool {
@@ -1825,7 +1901,7 @@ impl Parser {
             return true;
         }
         for p in &el.props {
-            if let Node::Attribute(a) = p {
+            if let Node::Attribute(a) = self.arena.node(*p) {
                 if a.name == "is" {
                     if let Some(v) = &a.value {
                         if v.content.starts_with("vue:") {
@@ -1838,31 +1914,30 @@ impl Parser {
         false
     }
 
-    fn condense_whitespace(&self, nodes: Vec<Node>) -> Vec<Node> {
+    fn condense_whitespace(&mut self, nodes: Vec<NodeId>) -> Vec<NodeId> {
         let should_condense = self.options.whitespace != WhitespaceStrategy::Preserve;
-        let mut nodes = nodes;
         let mut removed = vec![false; nodes.len()];
         for i in 0..nodes.len() {
-            let is_text = matches!(nodes[i], Node::Text(_));
-            if !is_text {
+            let id = nodes[i];
+            if !self.arena.is(id, NodeType::Text) {
                 continue;
             }
             if self.in_pre == 0 {
-                let all_ws = {
-                    let t = nodes[i].as_text();
-                    t.content.chars().all(|c| is_whitespace(c as u32))
-                };
+                let all_ws = self
+                    .arena
+                    .text(id)
+                    .content
+                    .chars()
+                    .all(|c| is_whitespace(c as u32));
                 if all_ws {
                     let prev = if i > 0 {
-                        Some(nodes[i - 1].node_type())
+                        Some(self.arena.node_type(nodes[i - 1]))
                     } else {
                         None
                     };
-                    let next = nodes.get(i + 1).map(|n| n.node_type());
-                    let has_newline = {
-                        let t = nodes[i].as_text();
-                        t.content.contains('\n') || t.content.contains('\r')
-                    };
+                    let next = nodes.get(i + 1).map(|n| self.arena.node_type(*n));
+                    let content = &self.arena.text(id).content;
+                    let has_newline = content.contains('\n') || content.contains('\r');
                     let remove = prev.is_none()
                         || next.is_none()
                         || (should_condense
@@ -1874,26 +1949,25 @@ impl Parser {
                                         || (next == Some(NodeType::Element) && has_newline)))));
                     if remove {
                         removed[i] = true;
-                    } else if let Node::Text(t) = &mut nodes[i] {
-                        t.content = " ".to_string();
+                    } else {
+                        self.arena.text_mut(id).content = " ".to_string();
                     }
                 } else if should_condense {
-                    if let Node::Text(t) = &mut nodes[i] {
-                        t.content = condense(&t.content);
-                    }
+                    let c = condense(&self.arena.text(id).content);
+                    self.arena.text_mut(id).content = c;
                 }
-            } else if let Node::Text(t) = &mut nodes[i] {
-                t.content = t.content.replace("\r\n", "\n");
+            } else {
+                let c = self.arena.text(id).content.replace("\r\n", "\n");
+                self.arena.text_mut(id).content = c;
             }
         }
         if removed.iter().any(|r| *r) {
-            let mut out = Vec::with_capacity(nodes.len());
-            for (i, n) in nodes.into_iter().enumerate() {
-                if !removed[i] {
-                    out.push(n);
-                }
-            }
-            out
+            nodes
+                .into_iter()
+                .enumerate()
+                .filter(|(i, _)| !removed[*i])
+                .map(|(_, n)| n)
+                .collect()
         } else {
             nodes
         }
@@ -1906,15 +1980,17 @@ impl Parser {
         loc: SourceLocation,
         const_type: ConstantType,
         parse_mode: ExpParseMode,
-    ) -> Node {
-        let mut exp = create_simple_expression(content.clone(), is_static, loc.clone(), const_type);
+    ) -> NodeId {
+        let exp = self
+            .arena
+            .create_simple_expression(content.clone(), is_static, loc.clone(), const_type);
         if !is_static
             && self.options.prefix_identifiers
             && parse_mode != ExpParseMode::Skip
             && !content.trim().is_empty()
         {
             if super::utils::is_simple_identifier(&content) {
-                exp.as_simple_exp_mut().ast = ExpAst::Null;
+                self.arena.exp_mut(exp).ast = ExpAst::Null;
                 return exp;
             }
             let ts = true;
@@ -1931,9 +2007,9 @@ impl Parser {
                     .map(|e| ExpAst::Expr(Box::new(e))),
             };
             match parsed {
-                Ok(ast) => exp.as_simple_exp_mut().ast = ast,
+                Ok(ast) => self.arena.exp_mut(exp).ast = ast,
                 Err(msg) => {
-                    exp.as_simple_exp_mut().ast = ExpAst::Failed;
+                    self.arena.exp_mut(exp).ast = ExpAst::Failed;
                     let off = loc.start.offset.max(0) as usize;
                     self.emit_error_msg(ErrorCode::X_INVALID_EXPRESSION, off, &msg);
                 }
@@ -1942,13 +2018,12 @@ impl Parser {
         exp
     }
 
-    fn parse_for_expression(&mut self, input: &Node) -> Option<ForParseResult> {
-        let exp_node = input.as_simple_exp();
-        let loc = exp_node.loc.clone();
-        let exp = exp_node.content.clone();
+    fn parse_for_expression(&mut self, input: NodeId) -> Option<ForParseResult> {
+        let loc = self.arena.exp(input).loc.clone();
+        let exp = self.arena.exp(input).content.clone();
         let (lhs, rhs) = super::utils::match_for_alias(&exp)?;
 
-        let mut make = |content: String, offset: usize, as_param: bool, me: &mut Self| -> Node {
+        let make = |content: String, offset: usize, as_param: bool, me: &mut Self| -> NodeId {
             let start = loc.start.offset.max(0) as usize + offset;
             let end = start + content.encode_utf16().count();
             let l = me.get_loc(start, end);
@@ -2062,20 +2137,7 @@ fn condense(s: &str) -> String {
     ret
 }
 
-fn is_fragment_template(el: &ElementNode) -> bool {
-    if el.tag == "template" {
-        for p in &el.props {
-            if let Node::Directive(d) = p {
-                if matches!(d.name.as_str(), "if" | "else" | "else-if" | "for" | "slot") {
-                    return true;
-                }
-            }
-        }
-    }
-    false
-}
-
-fn dir_to_attr(dir: Node) -> Node {
+fn unused_dir_to_attr(dir: Node) -> Node {
     let d = match dir {
         Node::Directive(d) => *d,
         other => return other,
@@ -2091,31 +2153,20 @@ fn dir_to_attr(dir: Node) -> Node {
         },
         source: raw_name.clone(),
     };
-    let mut attr = AttributeNode {
+    let attr = AttributeNode {
         name: raw_name,
         name_loc,
         value: None,
         loc: d.loc.clone(),
     };
-    if let Some(exp) = d.exp {
-        let e = exp.as_simple_exp();
-        let mut loc = e.loc.clone();
-        if loc.end.offset < d.loc.end.offset {
-            loc.start.offset -= 1;
-            loc.start.column -= 1;
-            loc.end.offset += 1;
-            loc.end.column += 1;
-        }
-        attr.value = Some(TextNode {
-            content: e.content.clone(),
-            loc,
-        });
-    }
+    // NOTE: the JS version copies `dir.exp` into the attribute value; it needs
+    // arena access, so `Parser::dir_to_attr_with_exp` does that part.
     Node::Attribute(Box::new(attr))
 }
 
 pub struct ParseResult {
-    pub root: RootNode,
+    pub arena: Arena,
+    pub root: NodeId,
     pub errors: Vec<CompilerError>,
 }
 
@@ -2125,9 +2176,10 @@ pub fn base_parse(input: &str, options: ParserOptions) -> ParseResult {
     let children = std::mem::take(&mut p.root_children);
     let children = p.condense_whitespace(children);
     let loc = p.get_loc(0, p.buffer.len());
-    let mut root = create_root(children, input.to_string());
-    root.loc = loc;
+    let root = p.arena.create_root(children, input.to_string());
+    p.arena.root_mut(root).loc = loc;
     ParseResult {
+        arena: p.arena,
         root,
         errors: std::mem::take(&mut p.errors),
     }
