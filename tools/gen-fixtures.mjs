@@ -118,3 +118,29 @@ for (const input of templates) {
 }
 fs.writeFileSync('tests/fixtures/compile-dom.json', JSON.stringify(compileOut))
 console.log(`compile-dom: ${compileOut.length}`)
+
+// --- compileTemplate (asset-url transforms on by default) --------------------
+const tmplOut = []
+for (const input of templates) {
+  for (const scoped of [false, true]) {
+    let r
+    try {
+      r = sfcApi.compileTemplate({
+        source: input,
+        filename: 'anonymous.vue',
+        id: 'someid',
+        scoped,
+      })
+    } catch (e) {
+      continue
+    }
+    tmplOut.push({
+      input,
+      scoped,
+      code: r.code,
+      errors: r.errors.map(e => (typeof e === 'string' ? e : e.message)),
+    })
+  }
+}
+fs.writeFileSync('tests/fixtures/compile-template.json', JSON.stringify(tmplOut))
+console.log(`compile-template: ${tmplOut.length}`)

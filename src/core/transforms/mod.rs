@@ -76,7 +76,14 @@ pub fn apply_node_transform(
             crate::dom::transforms::validate_html_nesting::validate_html_nesting(node, ctx);
             Vec::new()
         }
-        NodeTransformKind::TransformAssetUrl | NodeTransformKind::TransformSrcset => Vec::new(),
+        NodeTransformKind::TransformAssetUrl => {
+            crate::sfc::template::transform_asset_url::transform_asset_url(node, ctx);
+            Vec::new()
+        }
+        NodeTransformKind::TransformSrcset => {
+            crate::sfc::template::transform_srcset::transform_srcset(node, ctx);
+            Vec::new()
+        }
     }
 }
 

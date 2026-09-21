@@ -133,6 +133,7 @@ pub struct TransformOptions {
     pub binding_metadata: BindingMetadata,
     pub inline: bool,
     pub is_ts: bool,
+    pub asset_url_options: crate::sfc::template::transform_asset_url::AssetUrlOptions,
 }
 
 impl Default for TransformOptions {
@@ -157,6 +158,7 @@ impl Default for TransformOptions {
             binding_metadata: BindingMetadata::default(),
             inline: false,
             is_ts: false,
+            asset_url_options: Default::default(),
         }
     }
 }

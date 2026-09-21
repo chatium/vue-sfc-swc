@@ -249,3 +249,48 @@ fn compile_dom() {
     eprintln!("compile-dom: {ok}/{} match", cases.len());
     report("compile-dom", cases.len(), failed);
 }
+
+#[test]
+fn compile_template() {
+    let cases = load("compile-template");
+    let mut failed: Vec<(String, String)> = Vec::new();
+    let mut ok = 0usize;
+    for case in &cases {
+        let input = case["input"].as_str().unwrap();
+        let scoped = case["scoped"].as_bool().unwrap();
+        let want = case["code"].as_str().unwrap();
+        let result = std::panic::catch_unwind(|| {
+            vue_sfc::sfc::compile_template::compile_template(
+                input,
+                vue_sfc::sfc::compile_template::TemplateCompileOptions {
+                    filename: "anonymous.vue".to_string(),
+                    id: "someid".to_string(),
+                    scoped,
+                    ..Default::default()
+                },
+            )
+        });
+        match result {
+            Ok(r) => {
+                if r.code == want {
+                    ok += 1;
+                } else {
+                    failed.push((
+                        format!("{input:?} scoped={scoped}"),
+                        format!("got:\n{}\nwant:\n{}", r.code, want),
+                    ));
+                }
+            }
+            Err(e) => {
+                let msg = e
+                    .downcast_ref::<String>()
+                    .cloned()
+                    .or_else(|| e.downcast_ref::<&str>().map(|s| s.to_string()))
+                    .unwrap_or_default();
+                failed.push((format!("{input:?} scoped={scoped}"), format!("panic: {msg}")));
+            }
+        }
+    }
+    eprintln!("compile-template: {ok}/{} match", cases.len());
+    report("compile-template", cases.len(), failed);
+}
