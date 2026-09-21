@@ -103,6 +103,12 @@ fn resolve_type_ref(
         }
     };
 
+    // `innerResolveTypeReference` checks the scope's imports before its own
+    // types, and resolving one needs the filesystem this port does not have
+    // (`compileScript` is not given an `fs` option here either)
+    if let Some(e) = imported_type_error(ctx, &name, (r.span.lo.0 as usize, r.span.hi.0 as usize)) {
+        return Err(e);
+    }
     if let Some(decl) = ctx.type_decls.get(&name).cloned() {
         return match decl {
             TypeDecl::Interface(i) => resolve_interface_members(ctx, &i),
@@ -186,6 +192,23 @@ fn resolve_string_type(ctx: &mut ScriptCompileContext, node: &TsType) -> Vec<Str
     }
 }
 
+/// `importSourceToScope` errors as soon as a type must come from an import.
+fn imported_type_error(
+    ctx: &ScriptCompileContext,
+    name: &str,
+    span: (usize, usize),
+) -> Option<String> {
+    if !ctx.user_imports.iter().any(|(local, _)| local == name) {
+        return None;
+    }
+    Some(ctx.error_at(
+        "No fs option provided to `compileScript` in non-Node environment. \
+         File system access is required for resolving imported types.",
+        span,
+        true,
+    ))
+}
+
 fn resolve_interface_members(
     ctx: &mut ScriptCompileContext,
     node: &TsInterfaceDecl,
@@ -194,6 +217,11 @@ fn resolve_interface_members(
     for ext in &node.extends {
         if let Expr::Ident(i) = &*ext.expr {
             let name = i.sym.to_string();
+            if let Some(e) =
+                imported_type_error(ctx, &name, (i.span.lo.0 as usize, i.span.hi.0 as usize))
+            {
+                return Err(e);
+            }
             if let Some(decl) = ctx.type_decls.get(&name).cloned() {
                 let resolved = match decl {
                     TypeDecl::Interface(i) => resolve_interface_members(ctx, &i)?,

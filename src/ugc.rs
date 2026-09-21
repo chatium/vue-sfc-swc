@@ -221,7 +221,18 @@ pub fn compile_vue(source: &str, path: &str) -> Result<VueOutput, VueFailure> {
         ) {
             Ok(r) => {
                 bindings = Some(r.bindings.clone());
-                code = format!("{};", rewrite_default(&r.content, "__sfc__", is_ts));
+                let rewritten = rewrite_default(&r.content, "__sfc__", is_ts).map_err(|e| {
+                    VueFailure {
+                        stage: VueStage::Script,
+                        errors: vec![VueError {
+                            msg: e,
+                            position: None,
+                        }],
+                        logic: None,
+                        file_path: path.to_string(),
+                    }
+                })?;
+                code = format!("{rewritten};");
             }
             Err(e) => {
                 return Err(VueFailure {

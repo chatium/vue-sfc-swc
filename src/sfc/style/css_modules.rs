@@ -82,6 +82,18 @@ pub fn apply(tree: &mut CssTree, original_css: &str) -> ModulesResult {
         match tree.get(id).kind {
             CssKind::AtRule => {
                 let name = tree.get(id).name.clone();
+                // `postcss-modules-values` reads the imported file; this port
+                // has no filesystem, so the import cannot be resolved
+                if name == "value" {
+                    let params = tree.get(id).params.clone();
+                    if let Some(i) = params.find(" from ") {
+                        let from = params[i + 6..].trim().trim_matches(['"', '\''].as_ref());
+                        error = Some(format!(
+                            "Unable to resolve `@value ... from '{from}'`: imports from other \
+                             files are not supported."
+                        ));
+                    }
+                }
                 if is_keyframes(&name) {
                     let params = tree.get(id).params.trim().to_string();
                     if !params.is_empty() {

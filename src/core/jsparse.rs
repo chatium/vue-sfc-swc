@@ -37,6 +37,12 @@ pub fn parse_expression(src: &str, ts: bool) -> Result<Expr, String> {
             if let Some(e) = parser.take_errors().into_iter().next() {
                 return Err(e.into_kind().msg().to_string());
             }
+            // `parseExpression` must consume the whole input; swc's parser
+            // stops at the first complete expression
+            let end = expr.span().hi.0.saturating_sub(base.0) as usize;
+            if !src[end.min(src.len())..].trim().is_empty() {
+                return Err("Unexpected token".to_string());
+            }
             let mut expr = *expr;
             super::spans::rebase_expr(&mut expr, base);
             super::spans::strip_parens_expr(&mut expr);

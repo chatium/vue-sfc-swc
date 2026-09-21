@@ -5,14 +5,12 @@ use swc_core::ecma::ast::*;
 
 use super::magic_string::MagicString;
 
-pub fn rewrite_default(input: &str, as_: &str, ts: bool) -> String {
-    let program = match crate::core::jsparse::parse_module(input, ts) {
-        Ok(p) => p,
-        Err(_) => return input.to_string(),
-    };
+/// The JS version lets Babel's parse error escape to the caller.
+pub fn rewrite_default(input: &str, as_: &str, ts: bool) -> Result<String, String> {
+    let program = crate::core::jsparse::parse_module(input, ts)?;
     let mut s = MagicString::new(input);
     rewrite_default_ast(&program.body, &mut s, as_);
-    s.to_string()
+    Ok(s.to_string())
 }
 
 pub fn has_default_export(body: &[ModuleItem]) -> bool {

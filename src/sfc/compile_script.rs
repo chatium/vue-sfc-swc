@@ -41,7 +41,7 @@ fn is_static_node(node: &Expr) -> bool {
         Expr::Seq(s) => s.exprs.iter().all(|e| is_static_node(e)),
         Expr::Tpl(t) => t.exprs.iter().all(|e| is_static_node(e)),
         Expr::Paren(p) => is_static_node(&p.expr),
-        Expr::Lit(l) => !matches!(l, Lit::Regex(_) | Lit::JSXText(_)),
+        Expr::Lit(_) => true,
         _ => false,
     }
 }
@@ -53,8 +53,13 @@ fn can_never_be_ref(node: &Expr, user_reactive_import: Option<&str>) -> bool {
         }
     }
     match node {
+        // Babel splits `&&`, `||` and `??` out into `LogicalExpression`,
+        // which this list does not cover
+        Expr::Bin(b) => !matches!(
+            b.op,
+            BinaryOp::LogicalAnd | BinaryOp::LogicalOr | BinaryOp::NullishCoalescing
+        ),
         Expr::Unary(_)
-        | Expr::Bin(_)
         | Expr::Array(_)
         | Expr::Object(_)
         | Expr::Fn(_)
@@ -445,7 +450,7 @@ pub fn compile_script(
             ModuleItem::ModuleDecl(ModuleDecl::Import(i)) => i,
             _ => continue,
         };
-        hoist_node(&mut ctx, sp(imp), &source, start_offset);
+        hoist_node(&mut ctx, sp(imp), &source, start_offset, end_offset);
 
         let mut removed = 0usize;
         let specs = &imp.specifiers;
@@ -727,7 +732,7 @@ pub fn compile_script(
             );
         }
         if hoist_static && is_all_literal {
-            hoist_node(&mut ctx, sp_of_item(item), &source, start_offset);
+            hoist_node(&mut ctx, sp_of_item(item), &source, start_offset, end_offset);
         }
 
         // top-level await
@@ -795,7 +800,7 @@ pub fn compile_script(
                 _ => false,
             };
             if is_type_decl {
-                hoist_node(&mut ctx, sp_of_item(item), &source, start_offset);
+                hoist_node(&mut ctx, sp_of_item(item), &source, start_offset, end_offset);
             }
         }
     }
@@ -924,6 +929,10 @@ pub fn compile_script(
 
     // 9. return statement
     let props_decl = gen_runtime_props(&mut ctx);
+    // `ctx.error` throws in JS, so a type that could not be resolved aborts
+    if let Some(e) = ctx.errors.first() {
+        return Err(e.clone());
+    }
     let mut has_inlined_ssr_render_fn = false;
     let returned: String;
     if !options.inline_template || (sfc.template.is_none() && ctx.has_default_export_render) {
@@ -1061,7 +1070,11 @@ pub fn compile_script(
     if let Some(p) = &props_decl {
         runtime_options.push_str(&format!("\n  props: {p},"));
     }
-    if let Some(e) = gen_runtime_emits(&mut ctx) {
+    let emits_decl = gen_runtime_emits(&mut ctx);
+    if let Some(e) = ctx.errors.first() {
+        return Err(e.clone());
+    }
+    if let Some(e) = emits_decl {
         runtime_options.push_str(&format!("\n  emits: {e},"));
     }
 
@@ -1244,9 +1257,31 @@ fn hoist_node(
     (start, end): (usize, usize),
     source: &str,
     start_offset: usize,
+    limit: usize,
 ) {
     let start = start + start_offset;
     let mut end = end + start_offset;
+    // `node.trailingComments`: Babel attaches every comment between this node
+    // and the next statement to it, so they are hoisted along with it
+    let mut scan = end;
+    loop {
+        while scan < limit {
+            match source[scan..].chars().next() {
+                Some(c) if c.is_whitespace() => scan += c.len_utf8(),
+                _ => break,
+            }
+        }
+        if source[scan.min(limit)..limit].starts_with("//") {
+            end = source[scan..limit].find('\n').map_or(limit, |i| scan + i);
+        } else if source[scan.min(limit)..limit].starts_with("/*") {
+            end = source[scan..limit]
+                .find("*/")
+                .map_or(limit, |i| scan + i + 2);
+        } else {
+            break;
+        }
+        scan = end;
+    }
     while end <= source.len() {
         let ch = source[end.min(source.len())..].chars().next();
         match ch {

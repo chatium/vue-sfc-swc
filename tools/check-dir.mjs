@@ -31,32 +31,47 @@ for (const f of files) {
 }
 console.log(`${files.length} files, ${sources.length} unique`)
 
-const helper = spawn(process.execPath, [path.resolve('tools/reference-helper.cjs')], {
-  stdio: ['pipe', 'pipe', 'inherit'],
-  cwd: path.resolve('tools'),
-})
-let resolveLine
-let buf = ''
-helper.stdout.setEncoding('utf8')
-helper.stdout.on('data', chunk => {
-  buf += chunk
-  let i
-  while ((i = buf.indexOf('\n')) >= 0) {
-    const line = buf.slice(0, i)
-    buf = buf.slice(i + 1)
-    resolveLine(JSON.parse(line))
-  }
-})
-const run = (source, filePath) =>
+// The helper can die outright (Sass load paths reaching the filesystem), so
+// it is restarted and that one case dropped.
+let helper, resolveLine, buf
+function start() {
+  buf = ''
+  helper = spawn(process.execPath, [path.resolve('tools/reference-helper.cjs')], {
+    stdio: ['pipe', 'pipe', 'ignore'],
+    cwd: path.resolve('tools'),
+  })
+  helper.stdout.setEncoding('utf8')
+  helper.stdout.on('data', chunk => {
+    buf += chunk
+    let i
+    while ((i = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, i)
+      buf = buf.slice(i + 1)
+      resolveLine({ ok: JSON.parse(line) })
+    }
+  })
+  helper.on('exit', () => resolveLine && resolveLine({ crashed: true }))
+}
+start()
+const run = source =>
   new Promise(resolve => {
     resolveLine = resolve
-    helper.stdin.write(JSON.stringify({ kind: 'vue', source, path: filePath }) + '\n')
+    helper.stdin.write(JSON.stringify({ kind: 'vue', source, path: 'component.vue' }) + '\n')
   })
 
 const results = []
+let crashed = 0
 for (const source of sources) {
-  results.push({ source, path: 'component.vue', out: await run(source, 'component.vue') })
+  const r = await run(source)
+  if (r.crashed) {
+    crashed++
+    start()
+    continue
+  }
+  results.push({ source, path: 'component.vue', out: r.ok })
 }
+resolveLine = null
 helper.stdin.end()
+if (crashed) console.log(`${crashed} cases crashed the reference helper, dropped`)
 fs.writeFileSync(out, JSON.stringify(results))
 console.log(`wrote ${results.length} cases to ${out}`)

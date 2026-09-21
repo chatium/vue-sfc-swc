@@ -502,9 +502,17 @@ fn extract_and_wrap_nodes(tree: &mut CssTree, parent: usize) {
     for n in &nodes {
         tree.remove(*n);
     }
+    // `Container#prepend` normalizes the new node's `before` from the first
+    // remaining child
+    let sample_before = tree
+        .children(parent)
+        .first()
+        .and_then(|c| tree.get(*c).raws.before.clone())
+        .map(|b| b.chars().filter(|c| c.is_whitespace()).collect::<String>());
     let mut rule = CssNode::new(CssKind::Rule);
     rule.selector = "&".to_string();
     rule.nodes = Some(Vec::new());
+    rule.raws.before = sample_before;
     let rule_id = tree.add(rule);
     for n in nodes {
         tree.push_child(rule_id, n);

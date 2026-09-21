@@ -474,10 +474,16 @@ pub fn is_member_expression(a: &Arena, exp: NodeId) -> bool {
         _ => None,
     };
     match parsed {
-        Some(e) => matches!(
-            unwrap_ts_node(&e),
-            Expr::Member(_) | Expr::OptChain(_)
-        ) || matches!(unwrap_ts_node(&e), Expr::Ident(i) if i.sym != *"undefined"),
+        Some(e) => match unwrap_ts_node(&e) {
+            Expr::Member(_) => true,
+            // Babel's `OptionalMemberExpression`; an optional *call* is not one
+            Expr::OptChain(o) => matches!(
+                &*o.base,
+                swc_core::ecma::ast::OptChainBase::Member(_)
+            ),
+            Expr::Ident(i) => i.sym != *"undefined",
+            _ => false,
+        },
         None => false,
     }
 }

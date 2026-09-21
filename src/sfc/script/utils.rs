@@ -27,7 +27,8 @@ pub fn concat_strings(strs: Vec<Option<String>>) -> String {
 }
 
 pub fn is_literal_node(node: &Expr) -> bool {
-    matches!(node, Expr::Lit(_))
+    // `node.type.endsWith('Literal')`, which a Babel `TemplateLiteral` does
+    matches!(node, Expr::Lit(_) | Expr::Tpl(_))
 }
 
 /// `isCallOf(node, name)`

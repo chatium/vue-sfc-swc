@@ -73,8 +73,10 @@ Current state — every case byte-identical:
 
 `tools/check-dir.mjs <dir>` runs the same end-to-end check over a tree of real `.vue` files without
 vendoring them — it writes `tests/fixtures/ugc-vue-local.json` (gitignored), which `ugc_vue_local`
-picks up and otherwise skips. Against the 197 distinct `.vue` files in the `gbn` monorepo: 193 of
-197, the four being the same diagnostic-wording cases.
+picks up and otherwise skips. Against 3,746 distinct `.vue` files found under `~/github`: every
+successful compile is byte-identical, and the 17 remaining cases are invalid input where only the
+diagnostic's wording differs (that corpus is not fixed, so `ugc_vue_local` reports those rather
+than failing on them).
 
 ## Known divergences
 
@@ -85,6 +87,10 @@ position and code frame match. They are listed in `UGC_DIAGNOSTIC_DIVERGENCE` in
 - JS syntax errors read as swc phrases them, not Babel (`Expression expected` vs
   `Unexpected reserved word 'enum'.`). Matching would mean porting Babel's parser.
 - Sass errors read as `grass` phrases them, and its caret can sit one column left of dart-sass's.
+
+`@value name from './other.css'` in a CSS module is reported as an error: resolving it means
+reading another file, and this compiler has no filesystem. So does a `defineProps<T>()` whose `T`
+comes from an import, which is what `@vue/compiler-sfc` itself does without an `fs` option.
 
 Source maps are not produced. `compileTemplate` generates one in JS, but the SFC pipeline this
 targets never reads it.
