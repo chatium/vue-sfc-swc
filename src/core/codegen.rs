@@ -213,6 +213,18 @@ fn gen_function_preamble(root_id: NodeId, ctx: &mut CodegenContext) {
             }
         }
     }
+    if !root.ssr_helpers.is_empty() {
+        let aliases = root
+            .ssr_helpers
+            .iter()
+            .map(|h| alias_helper(*h))
+            .collect::<Vec<_>>()
+            .join(", ");
+        ctx.push(&format!(
+            "const {{ {aliases} }} = require(\"{}\")\n",
+            ctx.opts.ssr_runtime_module_name
+        ));
+    }
     gen_hoists(root_id, ctx);
     ctx.newline();
     ctx.push("return ");
@@ -257,6 +269,19 @@ fn gen_module_preamble(
                 serde_json::to_string(&ctx.opts.runtime_module_name).unwrap()
             ));
         }
+    }
+
+    if !root.ssr_helpers.is_empty() {
+        let names = root
+            .ssr_helpers
+            .iter()
+            .map(|h| format!("{} as _{}", h.name(), h.name()))
+            .collect::<Vec<_>>()
+            .join(", ");
+        ctx.push(&format!(
+            "import {{ {names} }} from \"{}\"\n",
+            ctx.opts.ssr_runtime_module_name
+        ));
     }
 
     if !imports.is_empty() {
@@ -443,6 +468,31 @@ fn gen_node(node: NodeId, ctx: &mut CodegenContext) {
             let body = body.clone();
             gen_node_list(&body, ctx, true, false);
         }
+        Node::TemplateLiteral(_) => gen_template_literal(node, ctx),
+        Node::IfStatement(_) => gen_if_statement(node, ctx),
+        Node::AssignmentExpression(l, r) => {
+            let (l, r) = (*l, *r);
+            gen_node(l, ctx);
+            ctx.push(" = ");
+            gen_node(r, ctx);
+        }
+        Node::SequenceExpression(e) => {
+            let e = e.clone();
+            ctx.push("(");
+            gen_node_list(&e, ctx, false, true);
+            ctx.push(")");
+        }
+        Node::ReturnStatement(r) => {
+            let r = *r;
+            ctx.push("return ");
+            match ctx.a.node(r) {
+                Node::Nodes(_) | Node::ChildrenRef(_) => {
+                    let list = ctx.a.list(r).clone();
+                    gen_node_list_as_array(&list, ctx);
+                }
+                _ => gen_node(r, ctx),
+            }
+        }
         Node::IfBranch(_) | Node::None => {}
         Node::Nodes(v) => {
             let v = v.clone();
@@ -453,6 +503,64 @@ fn gen_node(node: NodeId, ctx: &mut CodegenContext) {
             gen_node_list_as_array(&list, ctx);
         }
         other => panic!("unhandled codegen node type: {:?}", other.node_type()),
+    }
+}
+
+fn gen_template_literal(node: NodeId, ctx: &mut CodegenContext) {
+    let elements = match ctx.a.node(node) {
+        Node::TemplateLiteral(e) => e.clone(),
+        _ => unreachable!(),
+    };
+    ctx.push("`");
+    let multilines = elements.len() > 3;
+    for e in &elements {
+        if let Node::Str(raw) = ctx.a.node(*e) {
+            let escaped: String = raw
+                .chars()
+                .flat_map(|c| {
+                    let esc = matches!(c, '`' | '$' | '\\');
+                    esc.then_some('\\').into_iter().chain(std::iter::once(c))
+                })
+                .collect();
+            ctx.push(&escaped);
+        } else {
+            ctx.push("${");
+            if multilines {
+                ctx.indent();
+            }
+            gen_node(*e, ctx);
+            if multilines {
+                ctx.deindent(false);
+            }
+            ctx.push("}");
+        }
+    }
+    ctx.push("`");
+}
+
+fn gen_if_statement(node: NodeId, ctx: &mut CodegenContext) {
+    let (test, consequent, alternate) = match ctx.a.node(node) {
+        Node::IfStatement(i) => (i.test, i.consequent, i.alternate),
+        _ => unreachable!(),
+    };
+    ctx.push("if (");
+    gen_node(test, ctx);
+    ctx.push(") {");
+    ctx.indent();
+    gen_node(consequent, ctx);
+    ctx.deindent(false);
+    ctx.push("}");
+    if let Some(alt) = alternate {
+        ctx.push(" else ");
+        if matches!(ctx.a.node(alt), Node::IfStatement(_)) {
+            gen_if_statement(alt, ctx);
+        } else {
+            ctx.push("{");
+            ctx.indent();
+            gen_node(alt, ctx);
+            ctx.deindent(false);
+            ctx.push("}");
+        }
     }
 }
 

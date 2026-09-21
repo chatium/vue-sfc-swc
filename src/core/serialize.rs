@@ -243,6 +243,19 @@ pub fn node(a: &Arena, id: NodeId) -> Value {
         Node::BlockStatement(b) => json!({ "type": 21, "body": nodes(a, b), "loc": loc(&loc_stub()) }),
         Node::Nodes(v) => nodes(a, v),
         Node::ChildrenRef(owner) => nodes(a, a.children_of(*owner)),
+        // SSR nodes never reach the AST fixtures
+        Node::TemplateLiteral(e) => json!({ "type": 22, "elements": nodes(a, e) }),
+        Node::IfStatement(i) => json!({
+            "type": 23,
+            "test": node(a, i.test),
+            "consequent": node(a, i.consequent),
+            "alternate": opt(a, &i.alternate),
+        }),
+        Node::AssignmentExpression(l, r) => {
+            json!({ "type": 24, "left": node(a, *l), "right": node(a, *r) })
+        }
+        Node::SequenceExpression(e) => json!({ "type": 25, "expressions": nodes(a, e) }),
+        Node::ReturnStatement(r) => json!({ "type": 26, "returns": node(a, *r) }),
         Node::None => Value::Null,
     }
 }

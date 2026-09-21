@@ -36,7 +36,7 @@ pub fn apply_node_transform(
             });
             let mut exits = Vec::new();
             for d in dirs {
-                exits.extend(v_if::transform_if(node, d, ctx));
+                exits.extend(v_if::transform_if(node, d, ctx, true));
             }
             exits
         }
@@ -45,7 +45,7 @@ pub fn apply_node_transform(
             let dirs = take_structural_directives(node, ctx, |n| n == "for");
             let mut exits = Vec::new();
             for d in dirs {
-                exits.extend(v_for::transform_for(node, d, ctx));
+                exits.extend(v_for::transform_for(node, d, ctx, true));
             }
             exits
         }
@@ -83,6 +83,59 @@ pub fn apply_node_transform(
         NodeTransformKind::TransformSrcset => {
             crate::sfc::template::transform_srcset::transform_srcset(node, ctx);
             Vec::new()
+        }
+        NodeTransformKind::SsrTransformIf => {
+            let dirs = take_structural_directives(node, ctx, |n| {
+                n == "if" || n == "else" || n == "else-if"
+            });
+            for d in dirs {
+                v_if::transform_if(node, d, ctx, false);
+            }
+            Vec::new()
+        }
+        NodeTransformKind::SsrTransformFor => {
+            let dirs = take_structural_directives(node, ctx, |n| n == "for");
+            let mut exits = Vec::new();
+            for d in dirs {
+                exits.extend(v_for::transform_for(node, d, ctx, false));
+            }
+            exits
+        }
+        NodeTransformKind::SsrTransformSlotOutlet => {
+            crate::ssr::misc::ssr_transform_slot_outlet(node, ctx);
+            Vec::new()
+        }
+        NodeTransformKind::SsrInjectFallthroughAttrs => {
+            crate::ssr::inject::ssr_inject_fallthrough_attrs(node, ctx);
+            Vec::new()
+        }
+        NodeTransformKind::SsrInjectCssVars => {
+            crate::ssr::inject::ssr_inject_css_vars(node, ctx);
+            Vec::new()
+        }
+        NodeTransformKind::SsrTransformElement => {
+            let is_plain = ctx.a.is(node, crate::core::ast::NodeType::Element)
+                && ctx.a.el(node).tag_type == crate::core::ast::ElementType::Element;
+            if is_plain {
+                vec![ExitFn::SsrElement { node }]
+            } else {
+                Vec::new()
+            }
+        }
+        NodeTransformKind::SsrTransformComponent => {
+            let is_component = ctx.a.is(node, crate::core::ast::NodeType::Element)
+                && ctx.a.el(node).tag_type == crate::core::ast::ElementType::Component;
+            if !is_component {
+                return Vec::new();
+            }
+            use crate::ssr::component::ComponentExit;
+            match crate::ssr::component::ssr_transform_component(node, ctx) {
+                ComponentExit::Component => vec![ExitFn::SsrComponent { node }],
+                ComponentExit::Suspense => vec![ExitFn::SsrSuspense { node }],
+                ComponentExit::TransitionGroup => vec![ExitFn::SsrTransitionGroup { node }],
+                ComponentExit::Transition => vec![ExitFn::SsrTransition { node }],
+                ComponentExit::None => Vec::new(),
+            }
         }
     }
 }
@@ -131,6 +184,25 @@ pub fn run_exit(exit: ExitFn, ctx: &mut TransformContext) {
         ExitFn::Transition { node } => {
             crate::dom::transforms::transition::exit_transition(node, ctx)
         }
+        ExitFn::ForTeardown { value, key, index } => {
+            ctx.scopes.v_for -= 1;
+            if ctx.opts.prefix_identifiers {
+                for id in [value, key, index].into_iter().flatten() {
+                    ctx.remove_identifiers(id);
+                }
+            }
+        }
+        ExitFn::SsrElement { node } => crate::ssr::element::ssr_transform_element_exit(node, ctx),
+        ExitFn::SsrComponent { node } => {
+            crate::ssr::component::ssr_transform_component_exit(node, ctx)
+        }
+        ExitFn::SsrSuspense { node } => crate::ssr::misc::ssr_transform_suspense_exit(node, ctx),
+        ExitFn::SsrTransitionGroup { node } => {
+            crate::ssr::misc::ssr_transform_transition_group_exit(node, ctx)
+        }
+        ExitFn::SsrTransition { node } => {
+            crate::ssr::misc::ssr_transform_transition_exit(node, ctx)
+        }
     }
 }
 
@@ -151,6 +223,14 @@ pub fn apply_directive_transform(
         DirectiveTransformKind::Html => crate::dom::transforms::v_html::transform_v_html(dir, node, ctx),
         DirectiveTransformKind::Text => crate::dom::transforms::v_text::transform_v_text(dir, node, ctx),
         DirectiveTransformKind::Show => crate::dom::transforms::v_show::transform_show(dir, ctx),
+        DirectiveTransformKind::SsrShow => crate::ssr::v_show::ssr_transform_show(dir, ctx),
+        DirectiveTransformKind::SsrModel => {
+            let r = crate::ssr::v_model::ssr_transform_model(dir, node, ctx);
+            DirectiveTransformResult {
+                props: r.props,
+                need_runtime: None,
+            }
+        }
         DirectiveTransformKind::Cloak | DirectiveTransformKind::Noop => {
             DirectiveTransformResult {
                 props: Vec::new(),

@@ -1264,6 +1264,7 @@ impl Parser {
                 is_self_closing: false,
                 inner_loc: None,
                 codegen_node: None,
+                ssr_codegen_node: None,
                 loc,
             },
             id,

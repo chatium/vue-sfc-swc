@@ -12,7 +12,12 @@ use crate::core::utils::{
 
 use super::transform_expression::process_expression;
 
-pub fn transform_if(node: NodeId, dir: NodeId, ctx: &mut TransformContext) -> Vec<ExitFn> {
+pub fn transform_if(
+    node: NodeId,
+    dir: NodeId,
+    ctx: &mut TransformContext,
+    codegen: bool,
+) -> Vec<ExitFn> {
     let name = ctx.a.dir(dir).name.clone();
     let exp = ctx.a.dir(dir).exp;
     let empty_exp = exp
@@ -49,6 +54,9 @@ pub fn transform_if(node: NodeId, dir: NodeId, ctx: &mut TransformContext) -> Ve
             loc,
         })));
         ctx.replace_node(if_node);
+        if !codegen {
+            return Vec::new();
+        }
         let key = sibling_key(if_node, ctx);
         vec![ExitFn::IfRoot {
             if_node,
@@ -56,7 +64,7 @@ pub fn transform_if(node: NodeId, dir: NodeId, ctx: &mut TransformContext) -> Ve
             key,
         }]
     } else {
-        process_else(node, dir, &name, ctx);
+        process_else(node, dir, &name, ctx, codegen);
         Vec::new()
     }
 }
@@ -86,7 +94,13 @@ fn sibling_key(if_node: NodeId, ctx: &TransformContext) -> usize {
     key
 }
 
-fn process_else(node: NodeId, dir: NodeId, name: &str, ctx: &mut TransformContext) {
+fn process_else(
+    node: NodeId,
+    dir: NodeId,
+    name: &str,
+    ctx: &mut TransformContext,
+    codegen: bool,
+) {
     let parent = match ctx.parent {
         Some(p) => p,
         None => return,
@@ -154,7 +168,11 @@ fn process_else(node: NodeId, dir: NodeId, name: &str, ctx: &mut TransformContex
                 }
 
                 ctx.a.if_node_mut(sibling).branches.push(branch);
-                let key_index = sibling_key(sibling, ctx);
+                let key_index = if codegen {
+                    Some(sibling_key(sibling, ctx))
+                } else {
+                    None
+                };
 
                 // the branch was removed from the tree, so traverse it here
                 let saved_parent = ctx.parent;
@@ -163,7 +181,9 @@ fn process_else(node: NodeId, dir: NodeId, name: &str, ctx: &mut TransformContex
                 ctx.parent = saved_parent;
                 ctx.child_index = saved_index;
 
-                exit_if_branch(sibling, branch, key_index, ctx);
+                if let Some(key_index) = key_index {
+                    exit_if_branch(sibling, branch, key_index, ctx);
+                }
                 ctx.current_node = None;
             } else {
                 let loc = ctx.a.loc(node).clone();

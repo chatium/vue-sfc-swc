@@ -111,16 +111,32 @@ pub fn exit_v_for_slot_scopes(
     }
 }
 
-fn build_client_slot_fn(
+/// which `buildSlotFn` `buildSlots` was handed
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SlotFnKind {
+    Client,
+    SsrComponent,
+    SsrSuspense,
+    SsrVNodeBranch,
+}
+
+fn build_slot_fn(
+    kind: SlotFnKind,
     props: Option<NodeId>,
+    v_for: Option<NodeId>,
     children: NodeId,
     children_first_loc: Option<SourceLocation>,
     loc: SourceLocation,
     ctx: &mut TransformContext,
 ) -> NodeId {
-    let l = children_first_loc.unwrap_or(loc);
-    ctx.a
-        .create_function_expression(props, Some(children), false, true, l)
+    match kind {
+        SlotFnKind::Client => {
+            let l = children_first_loc.unwrap_or(loc);
+            ctx.a
+                .create_function_expression(props, Some(children), false, true, l)
+        }
+        _ => crate::ssr::build_ssr_slot_fn(kind, props, v_for, children, loc, ctx),
+    }
 }
 
 pub struct SlotsResult {
@@ -128,7 +144,11 @@ pub struct SlotsResult {
     pub has_dynamic_slots: bool,
 }
 
-pub fn build_slots(node: NodeId, ctx: &mut TransformContext) -> SlotsResult {
+pub fn build_slots(
+    node: NodeId,
+    ctx: &mut TransformContext,
+    kind: SlotFnKind,
+) -> SlotsResult {
     ctx.helper(RuntimeHelper::WITH_CTX);
 
     let children = ctx.a.el(node).children.clone();
@@ -166,7 +186,7 @@ pub fn build_slots(node: NodeId, ctx: &mut TransformContext) -> SlotsResult {
         };
         let children_ref = ctx.a.children_ref(node);
         let first_loc = children.first().map(|c| ctx.a.loc(*c).clone());
-        let fnexp = build_client_slot_fn(exp, children_ref, first_loc, loc.clone(), ctx);
+        let fnexp = build_slot_fn(kind, exp, None, children_ref, first_loc, loc.clone(), ctx);
         let prop = ctx.a.create_object_property(key, fnexp);
         slots_properties.push(prop);
     }
@@ -227,8 +247,10 @@ pub fn build_slots(node: NodeId, ctx: &mut TransformContext) -> SlotsResult {
             .children
             .first()
             .map(|c| ctx.a.loc(*c).clone());
-        let slot_function = build_client_slot_fn(
+        let slot_function = build_slot_fn(
+            kind,
             slot_props,
+            v_for,
             slot_children,
             first_loc,
             slot_children_loc.clone(),
@@ -358,7 +380,7 @@ pub fn build_slots(node: NodeId, ctx: &mut TransformContext) -> SlotsResult {
         if !has_template_slots {
             let children_ref = ctx.a.children_ref(node);
             let first_loc = children.first().map(|c| ctx.a.loc(*c).clone());
-            let fnexp = build_client_slot_fn(None, children_ref, first_loc, loc.clone(), ctx);
+            let fnexp = build_slot_fn(kind, None, None, children_ref, first_loc, loc.clone(), ctx);
             let prop = ctx.a.create_object_property_str("default", fnexp);
             slots_properties.push(prop);
         } else if !implicit_default_children.is_empty()
@@ -377,7 +399,7 @@ pub fn build_slots(node: NodeId, ctx: &mut TransformContext) -> SlotsResult {
                 let first_loc = implicit_default_children
                     .first()
                     .map(|c| ctx.a.loc(*c).clone());
-                let fnexp = build_client_slot_fn(None, list, first_loc, loc.clone(), ctx);
+                let fnexp = build_slot_fn(kind, None, None, list, first_loc, loc.clone(), ctx);
                 let prop = ctx.a.create_object_property_str("default", fnexp);
                 slots_properties.push(prop);
             }

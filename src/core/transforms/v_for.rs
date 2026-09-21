@@ -8,7 +8,12 @@ use crate::core::utils::{find_dir, find_prop, inject_prop, is_slot_outlet, is_te
 
 use super::transform_expression::process_expression;
 
-pub fn transform_for(node: NodeId, dir: NodeId, ctx: &mut TransformContext) -> Vec<ExitFn> {
+pub fn transform_for(
+    node: NodeId,
+    dir: NodeId,
+    ctx: &mut TransformContext,
+    codegen: bool,
+) -> Vec<ExitFn> {
     if ctx.a.dir(dir).exp.is_none() {
         let loc = ctx.a.loc(dir).clone();
         ctx.error(ErrorCode::X_V_FOR_NO_EXPRESSION, Some(loc));
@@ -58,6 +63,11 @@ pub fn transform_for(node: NodeId, dir: NodeId, ctx: &mut TransformContext) -> V
         if let Some(i) = index {
             ctx.add_identifiers(i);
         }
+    }
+
+    // `processFor` without a codegen callback still tears the scope down
+    if !codegen {
+        return vec![ExitFn::ForTeardown { value, key, index }];
     }
 
     // --- processCodegen (enter half) ---

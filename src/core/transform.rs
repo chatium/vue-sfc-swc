@@ -59,6 +59,27 @@ pub enum ExitFn {
     Transition {
         node: NodeId,
     },
+    /// the scope teardown half of `processFor`, when no codegen runs (SSR)
+    ForTeardown {
+        value: Option<NodeId>,
+        key: Option<NodeId>,
+        index: Option<NodeId>,
+    },
+    SsrElement {
+        node: NodeId,
+    },
+    SsrComponent {
+        node: NodeId,
+    },
+    SsrSuspense {
+        node: NodeId,
+    },
+    SsrTransitionGroup {
+        node: NodeId,
+    },
+    SsrTransition {
+        node: NodeId,
+    },
 }
 
 /// `DirectiveTransformResult`
@@ -87,6 +108,7 @@ pub struct TransformContext {
     pub identifiers: HashMap<String, i32>,
     pub scopes: Scopes,
     pub parent: Option<NodeId>,
+    pub grand_parent: Option<NodeId>,
     pub child_index: usize,
     pub current_node: Option<NodeId>,
     pub in_v_once: bool,
@@ -98,6 +120,8 @@ pub struct TransformContext {
     pub seen_memo: HashSet<NodeId>,
     /// `directiveImportMap`
     pub directive_import_map: HashMap<NodeId, RuntimeHelper>,
+    /// the module-level `WeakMap`s of compiler-ssr
+    pub ssr_state: crate::ssr::SsrState,
 }
 
 impl TransformContext {
@@ -120,6 +144,7 @@ impl TransformContext {
             identifiers: HashMap::new(),
             scopes: Scopes::default(),
             parent: None,
+            grand_parent: None,
             child_index: 0,
             current_node: Some(root),
             in_v_once: false,
@@ -129,6 +154,7 @@ impl TransformContext {
             seen_once: HashSet::new(),
             seen_memo: HashSet::new(),
             directive_import_map: HashMap::new(),
+            ssr_state: Default::default(),
         }
     }
 
@@ -477,6 +503,7 @@ pub fn traverse_children(parent: NodeId, ctx: &mut TransformContext) {
             break;
         }
         let child = ctx.a.children_of(parent)[i as usize];
+        ctx.grand_parent = ctx.parent;
         ctx.parent = Some(parent);
         ctx.child_index = i as usize;
         ctx.removal_adjust = 0;

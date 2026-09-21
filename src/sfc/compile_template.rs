@@ -87,7 +87,11 @@ fn build_options(o: &TemplateCompileOptions) -> CompileOptions {
 
 pub fn compile_template(source: &str, o: TemplateCompileOptions) -> TemplateCompileResult {
     let opts = build_options(&o);
-    let r = compile(source, opts);
+    let r = if o.ssr {
+        crate::ssr::compile(source, opts)
+    } else {
+        compile(source, opts)
+    };
     TemplateCompileResult {
         code: r.code,
         preamble: r.preamble,
@@ -109,7 +113,11 @@ pub fn compile_template_ast(
     let mut arena = arena;
     let root = arena.create_root(children, source);
     let opts = build_options(&o);
-    let r = compile_ast(arena, root, parse_errors, opts);
+    let r = if o.ssr {
+        crate::ssr::compile_ast(arena, root, parse_errors, opts)
+    } else {
+        compile_ast(arena, root, parse_errors, opts)
+    };
     TemplateCompileResult {
         code: r.code,
         preamble: r.preamble,

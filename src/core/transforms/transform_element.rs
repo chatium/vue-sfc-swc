@@ -95,7 +95,7 @@ pub fn exit_element(_node: NodeId, ctx: &mut TransformContext) {
             && vnode_tag_sym != Some(RuntimeHelper::KEEP_ALIVE);
 
         if should_build_as_slots {
-            let r = build_slots(node, ctx);
+            let r = build_slots(node, ctx, crate::core::transforms::v_slot::SlotFnKind::Client);
             vnode_children = Some(r.slots);
             if r.has_dynamic_slots {
                 patch_flag |= pf::DYNAMIC_SLOTS;

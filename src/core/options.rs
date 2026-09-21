@@ -93,6 +93,14 @@ pub enum NodeTransformKind {
     // compiler-sfc
     TransformAssetUrl,
     TransformSrcset,
+    // compiler-ssr
+    SsrTransformIf,
+    SsrTransformFor,
+    SsrTransformSlotOutlet,
+    SsrInjectFallthroughAttrs,
+    SsrInjectCssVars,
+    SsrTransformElement,
+    SsrTransformComponent,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -107,6 +115,8 @@ pub enum DirectiveTransformKind {
     Show,
     Text,
     Noop,
+    SsrModel,
+    SsrShow,
 }
 
 pub type TagPredicate = Arc<dyn Fn(&str) -> bool + Send + Sync>;

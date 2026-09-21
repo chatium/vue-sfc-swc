@@ -29,7 +29,7 @@ pub enum ConstantType {
     CanStringify = 3,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[allow(non_camel_case_types, dead_code)]
 pub enum RuntimeHelper {
     FRAGMENT,
@@ -82,6 +82,33 @@ pub enum RuntimeHelper {
     V_SHOW,
     TRANSITION,
     TRANSITION_GROUP,
+    // compiler-ssr (imported from `vue/server-renderer`)
+    SSR_INTERPOLATE,
+    SSR_RENDER_VNODE,
+    SSR_RENDER_COMPONENT,
+    SSR_RENDER_SLOT,
+    SSR_RENDER_SLOT_INNER,
+    SSR_RENDER_CLASS,
+    SSR_RENDER_STYLE,
+    SSR_RENDER_ATTRS,
+    SSR_RENDER_ATTR,
+    SSR_RENDER_DYNAMIC_ATTR,
+    SSR_RENDER_LIST,
+    SSR_INCLUDE_BOOLEAN_ATTR,
+    SSR_LOOSE_EQUAL,
+    SSR_LOOSE_CONTAIN,
+    SSR_RENDER_DYNAMIC_MODEL,
+    SSR_GET_DYNAMIC_MODEL_PROPS,
+    SSR_RENDER_TELEPORT,
+    SSR_RENDER_SUSPENSE,
+    SSR_GET_DIRECTIVE_PROPS,
+}
+
+impl RuntimeHelper {
+    /// `h in ssrHelpers` — decides which import the helper comes from
+    pub fn is_ssr(self) -> bool {
+        self >= RuntimeHelper::SSR_INTERPOLATE
+    }
 }
 
 impl RuntimeHelper {
@@ -135,6 +162,25 @@ impl RuntimeHelper {
             V_ON_WITH_MODIFIERS => "withModifiers",
             V_ON_WITH_KEYS => "withKeys",
             V_SHOW => "vShow",
+            SSR_INTERPOLATE => "ssrInterpolate",
+            SSR_RENDER_VNODE => "ssrRenderVNode",
+            SSR_RENDER_COMPONENT => "ssrRenderComponent",
+            SSR_RENDER_SLOT => "ssrRenderSlot",
+            SSR_RENDER_SLOT_INNER => "ssrRenderSlotInner",
+            SSR_RENDER_CLASS => "ssrRenderClass",
+            SSR_RENDER_STYLE => "ssrRenderStyle",
+            SSR_RENDER_ATTRS => "ssrRenderAttrs",
+            SSR_RENDER_ATTR => "ssrRenderAttr",
+            SSR_RENDER_DYNAMIC_ATTR => "ssrRenderDynamicAttr",
+            SSR_RENDER_LIST => "ssrRenderList",
+            SSR_INCLUDE_BOOLEAN_ATTR => "ssrIncludeBooleanAttr",
+            SSR_LOOSE_EQUAL => "ssrLooseEqual",
+            SSR_LOOSE_CONTAIN => "ssrLooseContain",
+            SSR_RENDER_DYNAMIC_MODEL => "ssrRenderDynamicModel",
+            SSR_GET_DYNAMIC_MODEL_PROPS => "ssrGetDynamicModelProps",
+            SSR_RENDER_TELEPORT => "ssrRenderTeleport",
+            SSR_RENDER_SUSPENSE => "ssrRenderSuspense",
+            SSR_GET_DIRECTIVE_PROPS => "ssrGetDirectiveProps",
             TRANSITION => "Transition",
             TRANSITION_GROUP => "TransitionGroup",
         }
@@ -216,6 +262,8 @@ pub struct RootNode {
     pub cached: Vec<Option<NodeId>>,
     pub temps: usize,
     pub codegen_node: Option<NodeId>,
+    /// helpers imported from `vue/server-renderer` instead of `vue`
+    pub ssr_helpers: Vec<RuntimeHelper>,
     pub transformed: bool,
     pub loc: SourceLocation,
 }
@@ -236,6 +284,7 @@ pub struct ElementNode {
     pub is_self_closing: bool,
     pub inner_loc: Option<SourceLocation>,
     pub codegen_node: Option<NodeId>,
+    pub ssr_codegen_node: Option<NodeId>,
     pub loc: SourceLocation,
 }
 
@@ -397,6 +446,13 @@ pub struct FunctionExpression {
 }
 
 #[derive(Debug, Clone)]
+pub struct IfStatement {
+    pub test: NodeId,
+    pub consequent: NodeId,
+    pub alternate: Option<NodeId>,
+}
+
+#[derive(Debug, Clone)]
 pub struct ConditionalExpression {
     pub test: NodeId,
     pub consequent: NodeId,
@@ -442,8 +498,18 @@ pub enum Node {
     Str(String),
     /// a runtime-helper symbol member of a heterogeneous array
     Sym(RuntimeHelper),
-    /// `BlockStatement` — only produced by the v-memo loop body
+    /// `BlockStatement` — the v-memo loop body and every SSR statement list
     BlockStatement(Vec<NodeId>),
+    /// SSR only. Elements are `Node::Str` literals or interpolated nodes.
+    TemplateLiteral(Vec<NodeId>),
+    /// SSR only.
+    IfStatement(Box<IfStatement>),
+    /// SSR only.
+    AssignmentExpression(NodeId, NodeId),
+    /// SSR only.
+    SequenceExpression(Vec<NodeId>),
+    /// SSR only. `Nodes` returns get the array form, anything else is bare.
+    ReturnStatement(NodeId),
     /// an owned list (a JS array that is not shared with any node)
     Nodes(Vec<NodeId>),
     /// an alias of another node's `children` array — the JS compiler passes
@@ -480,6 +546,11 @@ pub enum NodeType {
     JsConditionalExpression = 19,
     JsCacheExpression = 20,
     JsBlockStatement = 21,
+    JsTemplateLiteral = 22,
+    JsIfStatement = 23,
+    JsAssignmentExpression = 24,
+    JsSequenceExpression = 25,
+    JsReturnStatement = 26,
     Other = 99,
 }
 
@@ -508,6 +579,11 @@ impl Node {
             Node::ConditionalExpression(_) => NodeType::JsConditionalExpression,
             Node::CacheExpression(_) => NodeType::JsCacheExpression,
             Node::BlockStatement(_) => NodeType::JsBlockStatement,
+            Node::TemplateLiteral(_) => NodeType::JsTemplateLiteral,
+            Node::IfStatement(_) => NodeType::JsIfStatement,
+            Node::AssignmentExpression(..) => NodeType::JsAssignmentExpression,
+            Node::SequenceExpression(_) => NodeType::JsSequenceExpression,
+            Node::ReturnStatement(_) => NodeType::JsReturnStatement,
             _ => NodeType::Other,
         }
     }
@@ -744,6 +820,7 @@ impl Arena {
             cached: Vec::new(),
             temps: 0,
             codegen_node: None,
+            ssr_helpers: Vec::new(),
             transformed: false,
             loc: loc_stub(),
         })))

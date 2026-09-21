@@ -351,3 +351,26 @@ for (const source of moduleCases) {
 }
 fs.writeFileSync('tests/fixtures/css-modules.json', JSON.stringify(modOut))
 console.log(`css-modules: ${modOut.length}`)
+
+// --- compileTemplate({ ssr: true }) -----------------------------------------
+const ssrOut = []
+for (const input of templates) {
+  let r
+  try {
+    r = sfcApi.compileTemplate({
+      source: input,
+      filename: 'anonymous.vue',
+      id: 'someid',
+      ssr: true,
+    })
+  } catch (e) {
+    continue
+  }
+  ssrOut.push({
+    input,
+    code: r.code,
+    errors: r.errors.map(e => (typeof e === 'string' ? e : e.message)),
+  })
+}
+fs.writeFileSync('tests/fixtures/compile-ssr.json', JSON.stringify(ssrOut))
+console.log(`compile-ssr: ${ssrOut.length}`)

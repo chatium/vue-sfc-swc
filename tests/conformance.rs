@@ -590,6 +590,50 @@ fn css_modules() {
     report("css-modules", cases.len(), failed);
 }
 
+#[test]
+fn compile_ssr() {
+    let cases = load("compile-ssr");
+    let mut failed: Vec<(String, String)> = Vec::new();
+    let mut ok = 0usize;
+    for case in &cases {
+        let input = case["input"].as_str().unwrap();
+        let want = case["code"].as_str().unwrap();
+        let result = std::panic::catch_unwind(|| {
+            vue_sfc::sfc::compile_template::compile_template(
+                input,
+                vue_sfc::sfc::compile_template::TemplateCompileOptions {
+                    filename: "anonymous.vue".to_string(),
+                    id: "someid".to_string(),
+                    ssr: true,
+                    ..Default::default()
+                },
+            )
+        });
+        match result {
+            Ok(r) => {
+                if r.code == want {
+                    ok += 1;
+                } else {
+                    failed.push((
+                        format!("{input:?}"),
+                        format!("got:\n{}\nwant:\n{}", r.code, want),
+                    ));
+                }
+            }
+            Err(e) => {
+                let msg = e
+                    .downcast_ref::<String>()
+                    .cloned()
+                    .or_else(|| e.downcast_ref::<&str>().map(|s| s.to_string()))
+                    .unwrap_or_default();
+                failed.push((format!("{input:?}"), format!("panic: {msg}")));
+            }
+        }
+    }
+    eprintln!("compile-ssr: {ok}/{} match", cases.len());
+    report("compile-ssr", cases.len(), failed);
+}
+
 /// Cases whose only difference is diagnostic *wording* for invalid input:
 /// swc's syntax-error text instead of babel's, and grass's instead of
 /// dart-sass's. Everything else (stage, structure, code frame) still matches.
