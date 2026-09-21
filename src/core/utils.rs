@@ -1,0 +1,198 @@
+//! Port of `compiler-core/src/utils.ts` (grown as the transforms need it).
+
+use std::sync::LazyLock;
+
+use regex::Regex;
+
+use super::ast::*;
+
+pub fn is_core_component(tag: &str) -> Option<RuntimeHelper> {
+    match tag {
+        "Teleport" | "teleport" => Some(RuntimeHelper::TELEPORT),
+        "Suspense" | "suspense" => Some(RuntimeHelper::SUSPENSE),
+        "KeepAlive" | "keep-alive" => Some(RuntimeHelper::KEEP_ALIVE),
+        "BaseTransition" | "base-transition" => Some(RuntimeHelper::BASE_TRANSITION),
+        _ => None,
+    }
+}
+
+/// `!/^$|^\d|[^\$\w\xA0-￿]/.test(name)`
+pub fn is_simple_identifier(name: &str) -> bool {
+    if name.is_empty() {
+        return false;
+    }
+    if name.chars().next().unwrap().is_ascii_digit() {
+        return false;
+    }
+    name.chars()
+        .all(|c| c == '$' || c == '_' || c.is_ascii_alphanumeric() || (c as u32) >= 0xA0)
+}
+
+pub fn is_static_exp(p: &Node) -> bool {
+    matches!(p, Node::SimpleExpression(e) if e.is_static)
+}
+
+pub fn is_static_arg_of(arg: &Option<Node>, name: &str) -> bool {
+    match arg {
+        Some(Node::SimpleExpression(e)) => e.is_static && e.content == name,
+        _ => false,
+    }
+}
+
+pub fn is_text_node(node: &Node) -> bool {
+    matches!(node, Node::Interpolation(_) | Node::Text(_))
+}
+
+pub fn is_v_pre(p: &Node) -> bool {
+    matches!(p, Node::Directive(d) if d.name == "pre")
+}
+
+pub fn is_v_slot(p: &Node) -> bool {
+    matches!(p, Node::Directive(d) if d.name == "slot")
+}
+
+pub fn is_template_node(node: &Node) -> bool {
+    matches!(node, Node::Element(e) if e.tag_type == ElementType::Template)
+}
+
+pub fn is_slot_outlet(node: &Node) -> bool {
+    matches!(node, Node::Element(e) if e.tag_type == ElementType::Slot)
+}
+
+pub fn is_all_whitespace(s: &str) -> bool {
+    s.chars().all(|c| super::parser::is_whitespace(c as u32))
+}
+
+pub fn is_whitespace_text(node: &Node) -> bool {
+    match node {
+        Node::Text(t) => is_all_whitespace(&t.content),
+        Node::TextCall(t) => is_whitespace_text(&t.content),
+        _ => false,
+    }
+}
+
+pub fn is_comment_or_whitespace(node: &Node) -> bool {
+    matches!(node, Node::Comment(_)) || is_whitespace_text(node)
+}
+
+pub fn find_dir<'a>(node: &'a ElementNode, name: &str, allow_empty: bool) -> Option<&'a Node> {
+    node.props.iter().find(
+        |p| matches!(p, Node::Directive(d) if (allow_empty || d.exp.is_some()) && d.name == name),
+    )
+}
+
+pub fn find_dir_matching<'a>(
+    node: &'a ElementNode,
+    pred: impl Fn(&str) -> bool,
+    allow_empty: bool,
+) -> Option<&'a Node> {
+    node.props.iter().find(
+        |p| matches!(p, Node::Directive(d) if (allow_empty || d.exp.is_some()) && pred(&d.name)),
+    )
+}
+
+pub fn find_prop<'a>(
+    node: &'a ElementNode,
+    name: &str,
+    dynamic_only: bool,
+    allow_empty: bool,
+) -> Option<&'a Node> {
+    for p in &node.props {
+        match p {
+            Node::Attribute(a) => {
+                if dynamic_only {
+                    continue;
+                }
+                if a.name == name && (a.value.is_some() || allow_empty) {
+                    return Some(p);
+                }
+            }
+            Node::Directive(d) => {
+                if d.name == "bind"
+                    && (d.exp.is_some() || allow_empty)
+                    && is_static_arg_of(&d.arg, name)
+                {
+                    return Some(p);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+pub fn has_dynamic_key_v_bind(node: &ElementNode) -> bool {
+    node.props.iter().any(|p| match p {
+        Node::Directive(d) => {
+            d.name == "bind"
+                && match &d.arg {
+                    None => true,
+                    Some(Node::SimpleExpression(e)) => !e.is_static,
+                    Some(_) => true,
+                }
+        }
+        _ => false,
+    })
+}
+
+pub fn to_valid_asset_id(name: &str, kind: &str) -> String {
+    // `name.replace(/[^\w]/g, (c, i) => c === '-' ? '_' : name.charCodeAt(i).toString())`
+    let units: Vec<u16> = name.encode_utf16().collect();
+    let mut out = String::new();
+    for (i, u) in units.iter().enumerate() {
+        let c = char::from_u32(*u as u32).unwrap_or('\u{fffd}');
+        if c.is_ascii_alphanumeric() || c == '_' {
+            out.push(c);
+        } else if c == '-' {
+            out.push('_');
+        } else {
+            out.push_str(&units[i].to_string());
+        }
+    }
+    format!("_{kind}_{out}")
+}
+
+static FOR_ALIAS_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?s)([\s\S]*?)\s+(?:in|of)\s+(\S[\s\S]*)").unwrap());
+static FOR_ITERATOR_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?s),([^,\}\]]*)(?:,([^,\}\]]*))?$").unwrap());
+
+pub fn match_for_alias(exp: &str) -> Option<(String, String)> {
+    let c = FOR_ALIAS_RE.captures(exp)?;
+    Some((c[1].to_string(), c[2].to_string()))
+}
+
+pub fn match_for_iterator(value: &str) -> Option<(String, Option<String>)> {
+    let c = FOR_ITERATOR_RE.captures(value)?;
+    Some((
+        c.get(1).map(|m| m.as_str().to_string()).unwrap_or_default(),
+        c.get(2).map(|m| m.as_str().to_string()),
+    ))
+}
+
+pub fn strip_for_iterator(value: &str) -> String {
+    FOR_ITERATOR_RE.replace(value, "").to_string()
+}
+
+/// `advancePositionWithClone`
+pub fn advance_position_with_clone(pos: &Position, source: &str, n: Option<usize>) -> Position {
+    let units: Vec<u16> = source.encode_utf16().collect();
+    let n = n.unwrap_or(units.len());
+    let mut lines_count = 0usize;
+    let mut last_newline_pos: i64 = -1;
+    for (i, u) in units.iter().enumerate().take(n) {
+        if *u == 10 {
+            lines_count += 1;
+            last_newline_pos = i as i64;
+        }
+    }
+    Position {
+        offset: pos.offset + n,
+        line: pos.line + lines_count,
+        column: if last_newline_pos == -1 {
+            pos.column + n
+        } else {
+            n - last_newline_pos as usize
+        },
+    }
+}

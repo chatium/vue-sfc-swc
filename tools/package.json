@@ -1,0 +1,9 @@
+{
+  "name": "vue-sfc-swc-tools",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@vue/compiler-sfc": "3.5.38",
+    "sass": "1.84.0"
+  }
+}
