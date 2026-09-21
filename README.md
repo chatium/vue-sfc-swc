@@ -18,6 +18,20 @@ Goal: byte-identical output to the JS compiler for the API surface that package 
 `ugc::compile_vue(source, path)` is the whole `helper.cjs` `.vue` pipeline in one call, returning
 the same `{ logic, template, code }` (or the same build error) the Node helper produces.
 
+## Using it
+
+```toml
+[dependencies]
+vue-sfc = { git = "ssh://git@github.com/chatium/vue-sfc-swc.git" }
+```
+
+```rust
+let r = vue_sfc::ugc::compile_vue(source, path)?;   // { logic, template, code }
+```
+
+It pins the same `swc_core` (`=80.0.0`) and toolchain (1.98.1) as
+`chatium-ugc-compiler`, so it drops into that build.
+
 ## Server-side rendering
 
 `compileTemplate` with `ssr: true` goes through the `ssr` module — the SSR transform preset, the
