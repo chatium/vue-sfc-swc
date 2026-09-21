@@ -240,6 +240,7 @@ pub fn node(a: &Arena, id: NodeId) -> Value {
         }),
         Node::Str(s) => json!(s),
         Node::Sym(h) => json!(format!("Symbol({})", h.name())),
+        Node::BlockStatement(b) => json!({ "type": 21, "body": nodes(a, b), "loc": loc(&loc_stub()) }),
         Node::Nodes(v) => nodes(a, v),
         Node::ChildrenRef(owner) => nodes(a, a.children_of(*owner)),
         Node::None => Value::Null,

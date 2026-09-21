@@ -442,6 +442,8 @@ pub enum Node {
     Str(String),
     /// a runtime-helper symbol member of a heterogeneous array
     Sym(RuntimeHelper),
+    /// `BlockStatement` — only produced by the v-memo loop body
+    BlockStatement(Vec<NodeId>),
     /// an owned list (a JS array that is not shared with any node)
     Nodes(Vec<NodeId>),
     /// an alias of another node's `children` array — the JS compiler passes
@@ -477,6 +479,7 @@ pub enum NodeType {
     JsFunctionExpression = 18,
     JsConditionalExpression = 19,
     JsCacheExpression = 20,
+    JsBlockStatement = 21,
     Other = 99,
 }
 
@@ -504,6 +507,7 @@ impl Node {
             Node::FunctionExpression(_) => NodeType::JsFunctionExpression,
             Node::ConditionalExpression(_) => NodeType::JsConditionalExpression,
             Node::CacheExpression(_) => NodeType::JsCacheExpression,
+            Node::BlockStatement(_) => NodeType::JsBlockStatement,
             _ => NodeType::Other,
         }
     }
@@ -542,6 +546,9 @@ static STUB_LOC: std::sync::LazyLock<SourceLocation> = std::sync::LazyLock::new(
 #[derive(Debug, Default)]
 pub struct Arena {
     nodes: Vec<Node>,
+    /// `ArrayExpression`s whose `elements` array is the same JS array object as
+    /// another node's list — mutations must be visible through both.
+    array_aliases: std::collections::HashMap<NodeId, NodeId>,
 }
 
 macro_rules! typed_accessors {
@@ -593,7 +600,12 @@ typed_accessors! {
 
 impl Arena {
     pub fn new() -> Self {
-        Arena { nodes: Vec::new() }
+        Arena::default()
+    }
+
+    /// resolves an `ArrayExpression` that aliases another node's list
+    pub fn array_alias(&self, id: NodeId) -> Option<NodeId> {
+        self.array_aliases.get(&id).copied()
     }
 
     pub fn add(&mut self, node: Node) -> NodeId {
@@ -627,8 +639,12 @@ impl Arena {
     /// node stands for.
     #[track_caller]
     pub fn list(&self, id: NodeId) -> &Vec<NodeId> {
+        if let Some(src) = self.array_aliases.get(&id) {
+            return self.list(*src);
+        }
         match self.node(id) {
             Node::Nodes(v) => v,
+            Node::ArrayExpression(a) => &a.elements,
             Node::ChildrenRef(owner) => self.children_of(*owner),
             Node::Root(r) => &r.children,
             Node::Element(e) => &e.children,
@@ -640,12 +656,16 @@ impl Arena {
 
     #[track_caller]
     pub fn list_mut(&mut self, id: NodeId) -> &mut Vec<NodeId> {
+        if let Some(src) = self.array_aliases.get(&id).copied() {
+            return self.list_mut(src);
+        }
         let target = match self.node(id) {
             Node::ChildrenRef(owner) => *owner,
             _ => id,
         };
         match self.node_mut(target) {
             Node::Nodes(v) => v,
+            Node::ArrayExpression(a) => &mut a.elements,
             Node::Root(r) => &mut r.children,
             Node::Element(e) => &mut e.children,
             Node::IfBranch(b) => &mut b.children,
@@ -790,6 +810,18 @@ impl Arena {
             properties,
             loc: loc_stub(),
         })))
+    }
+
+    /// `createArrayExpression(list)` where `list` is an existing array node —
+    /// the elements array is shared with it, as in JS.
+    pub fn create_array_expression_ref(&mut self, list: NodeId) -> NodeId {
+        // storage stays with the aliased node; always read through `list()`
+        let id = self.add(Node::ArrayExpression(Box::new(ArrayExpression {
+            elements: Vec::new(),
+            loc: loc_stub(),
+        })));
+        self.array_aliases.insert(id, list);
+        id
     }
 
     pub fn create_array_expression(&mut self, elements: Vec<NodeId>) -> NodeId {

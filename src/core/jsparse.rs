@@ -39,6 +39,7 @@ pub fn parse_expression(src: &str, ts: bool) -> Result<Expr, String> {
             }
             let mut expr = *expr;
             super::spans::rebase_expr(&mut expr, base);
+            super::spans::strip_parens_expr(&mut expr);
             Ok(expr)
         }
         Err(e) => Err(e.into_kind().msg().to_string()),
@@ -64,6 +65,7 @@ pub fn parse_program(src: &str, ts: bool) -> Result<Program, String> {
             }
             let mut program = program;
             super::spans::rebase_program(&mut program, base);
+            super::spans::strip_parens_program(&mut program);
             Ok(program)
         }
         Err(e) => Err(e.into_kind().msg().to_string()),

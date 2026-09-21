@@ -31,27 +31,42 @@ pub enum ExitFn {
     },
     For {
         for_node: NodeId,
-        key_prop: Option<NodeId>,
-        is_stable_fragment: bool,
+        node: NodeId,
+        render_exp: NodeId,
+        key_property: Option<NodeId>,
+        key_exp: Option<NodeId>,
         memo: Option<NodeId>,
-        fragment_flag: i32,
-    },
-    Expression {
-        node: NodeId,
-    },
-    SlotOutlet {
-        node: NodeId,
+        is_stable_fragment: bool,
+        is_template: bool,
+        value: Option<NodeId>,
+        key: Option<NodeId>,
+        index: Option<NodeId>,
     },
     Element {
         node: NodeId,
     },
-    SlotScopes,
+    SlotScopes {
+        slot_props: Option<NodeId>,
+    },
+    VForSlotScopes {
+        value: Option<NodeId>,
+        key: Option<NodeId>,
+        index: Option<NodeId>,
+    },
     Text {
         node: NodeId,
     },
     Transition {
         node: NodeId,
     },
+}
+
+/// `DirectiveTransformResult`
+#[derive(Debug, Clone)]
+pub struct DirectiveTransformResult {
+    pub props: Vec<NodeId>,
+    /// `needRuntime`: `Some(None)` is JS `true`, `Some(Some(sym))` a helper
+    pub need_runtime: Option<Option<RuntimeHelper>>,
 }
 
 pub struct TransformContext {
@@ -79,6 +94,10 @@ pub struct TransformContext {
     pub removal_adjust: i64,
     pub errors: Vec<CompilerError>,
     pub warnings: Vec<CompilerError>,
+    pub seen_once: HashSet<NodeId>,
+    pub seen_memo: HashSet<NodeId>,
+    /// `directiveImportMap`
+    pub directive_import_map: HashMap<NodeId, RuntimeHelper>,
 }
 
 impl TransformContext {
@@ -107,6 +126,9 @@ impl TransformContext {
             removal_adjust: 0,
             errors: Vec::new(),
             warnings: Vec::new(),
+            seen_once: HashSet::new(),
+            seen_memo: HashSet::new(),
+            directive_import_map: HashMap::new(),
         }
     }
 

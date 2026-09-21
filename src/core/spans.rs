@@ -24,6 +24,28 @@ pub fn rebase_expr(expr: &mut Expr, base: BytePos) {
     expr.visit_mut_with(&mut Rebase { base });
 }
 
+/// Babel drops `ParenthesizedExpression` nodes by default; swc keeps them, so
+/// strip them to keep node types (and `node.start`) comparable.
+struct StripParens;
+
+impl VisitMut for StripParens {
+    fn visit_mut_expr(&mut self, e: &mut Expr) {
+        e.visit_mut_children_with(self);
+        if let Expr::Paren(p) = e {
+            let inner = (*p.expr).clone();
+            *e = inner;
+        }
+    }
+}
+
+pub fn strip_parens_expr(expr: &mut Expr) {
+    expr.visit_mut_with(&mut StripParens);
+}
+
+pub fn strip_parens_program(program: &mut Program) {
+    program.visit_mut_with(&mut StripParens);
+}
+
 pub fn rebase_program(program: &mut Program, base: BytePos) {
     program.visit_mut_with(&mut Rebase { base });
 }

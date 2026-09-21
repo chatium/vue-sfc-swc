@@ -79,10 +79,12 @@ pub enum NodeTransformKind {
     TransformTransition,
     ValidateHtmlNesting,
     // compiler-core
+    TransformVBindShorthand,
     TransformOnce,
     TransformIf,
     TransformMemo,
     TransformFor,
+    TrackVForSlotScopes,
     TransformExpression,
     TransformSlotOutlet,
     TransformElement,
