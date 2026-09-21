@@ -21,6 +21,9 @@ pub struct TemplateCompileOptions {
     pub ssr_css_vars: Vec<String>,
     // compilerOptions passthrough
     pub binding_metadata: BindingMetadata,
+    /// whether `compilerOptions.bindingMetadata` was passed at all — codegen
+    /// adds the `$props, $setup, $data, $options` render args when it was
+    pub binding_metadata_provided: bool,
     pub expression_plugins: Vec<String>,
     pub inline: bool,
     pub is_ts: bool,
@@ -71,7 +74,7 @@ fn build_options(o: &TemplateCompileOptions) -> CompileOptions {
     opts.codegen.is_ts = o.is_ts;
     opts.codegen.ssr = o.ssr;
     opts.codegen.in_ssr = o.ssr;
-    opts.codegen.has_binding_metadata = !o.binding_metadata.is_empty();
+    opts.codegen.has_binding_metadata = o.binding_metadata_provided;
 
     if !o.no_asset_urls {
         opts.extra_node_transforms = vec![
@@ -115,4 +118,25 @@ pub fn compile_template_ast(
         arena: r.arena,
         root: r.root,
     }
+}
+
+/// Re-parses the SFC and returns the `<template>` block's children, matching
+/// what `compileTemplate` does when the descriptor AST was already transformed.
+pub fn reparse_template(
+    source: &str,
+) -> Option<(Arena, Vec<NodeId>, Vec<CompilerError>)> {
+    use crate::core::ast::{Node, NodeType};
+    let (arena, root, errors) = crate::dom::compile::parse_sfc_template(source);
+    let children = arena.root(root).children.clone();
+    for c in children {
+        if arena.is(c, NodeType::Element) {
+            if let Node::Element(e) = arena.node(c) {
+                if e.tag == "template" {
+                    let inner = e.children.clone();
+                    return Some((arena, inner, errors));
+                }
+            }
+        }
+    }
+    None
 }

@@ -32,9 +32,21 @@ pub fn process_props_destructure(
                 let prop_key = match prop_key {
                     Some(k) => k,
                     None => {
-                        return Err(ctx.error(&format!(
-                            "{DEFINE_PROPS}() destructure cannot use computed key."
-                        )));
+                        let span = match &kv.key {
+                            PropName::Computed(c) => {
+                                let s = c.expr.span();
+                                (s.lo.0 as usize, s.hi.0 as usize)
+                            }
+                            other => {
+                                let s = other.span();
+                                (s.lo.0 as usize, s.hi.0 as usize)
+                            }
+                        };
+                        return Err(ctx.error_at(
+                            &format!("{DEFINE_PROPS}() destructure cannot use computed key."),
+                            span,
+                            true,
+                        ));
                     }
                 };
                 match &*kv.value {
@@ -45,17 +57,27 @@ pub fn process_props_destructure(
                             &i.id.sym,
                             Some(a.right.clone()),
                         ),
-                        _ => {
-                            return Err(ctx.error(&format!(
-                                "{DEFINE_PROPS}() destructure does not support nested patterns."
-                            )));
+                        other => {
+                            let s = other.span();
+                            return Err(ctx.error_at(
+                                &format!(
+                                    "{DEFINE_PROPS}() destructure does not support nested patterns."
+                                ),
+                                (s.lo.0 as usize, s.hi.0 as usize),
+                                true,
+                            ));
                         }
                     },
                     Pat::Ident(i) => register_binding(ctx, &prop_key, &i.id.sym, None),
-                    _ => {
-                        return Err(ctx.error(&format!(
-                            "{DEFINE_PROPS}() destructure does not support nested patterns."
-                        )));
+                    other => {
+                        let s = other.span();
+                        return Err(ctx.error_at(
+                            &format!(
+                                "{DEFINE_PROPS}() destructure does not support nested patterns."
+                            ),
+                            (s.lo.0 as usize, s.hi.0 as usize),
+                            true,
+                        ));
                     }
                 }
             }

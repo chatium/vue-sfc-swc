@@ -589,3 +589,150 @@ fn css_modules() {
     }
     report("css-modules", cases.len(), failed);
 }
+
+/// Cases whose only difference is diagnostic *wording* for invalid input:
+/// swc's syntax-error text instead of babel's, and grass's instead of
+/// dart-sass's. Everything else (stage, structure, code frame) still matches.
+const UGC_DIAGNOSTIC_DIVERGENCE: &[&str] = &[
+    "<script><g/><g/></script>", // babel names the missing jsx/flow/ts plugin
+    "const enum E { A }",        // babel: "Unexpected reserved word 'enum'."
+    "const broken: = 1",         // babel: bare "Unexpected token"
+    "$x:</style>",               // dart-sass points one column further right
+];
+
+/// End-to-end: the exact pipeline `helper.cjs` runs for `.vue` files.
+#[test]
+fn ugc_vue() {
+    let cases = load("ugc-vue");
+    let mut failed: Vec<(String, String)> = Vec::new();
+    let mut ok = 0usize;
+    let mut errs = 0usize;
+    for case in &cases {
+        let source = case["source"].as_str().unwrap();
+        let path = case["path"].as_str().unwrap();
+        let out = &case["out"];
+        let want_error = out.get("error").is_some();
+        let result = std::panic::catch_unwind(|| vue_sfc::ugc::compile_vue(source, path));
+        match result {
+            Ok(Ok(r)) => {
+                if want_error {
+                    failed.push((
+                        source.to_string(),
+                        format!("expected error {:?}", out["error"]),
+                    ));
+                    continue;
+                }
+                let want_logic = out["logic"].as_str().unwrap_or("");
+                let want_template = out["template"].as_str().unwrap_or("");
+                let want_code = out["code"].as_str().unwrap_or("");
+                if r.logic != want_logic {
+                    failed.push((
+                        source.to_string(),
+                        format!("logic:\ngot  {:?}\nwant {:?}", r.logic, want_logic),
+                    ));
+                } else if r.template != want_template {
+                    failed.push((
+                        source.to_string(),
+                        format!("template:\ngot  {:?}\nwant {:?}", r.template, want_template),
+                    ));
+                } else if r.code != want_code {
+                    failed.push((
+                        source.to_string(),
+                        format!("code:\ngot  {:?}\nwant {:?}", r.code, want_code),
+                    ));
+                } else {
+                    ok += 1;
+                }
+            }
+            Ok(Err(f)) => {
+                if !want_error {
+                    failed.push((source.to_string(), "unexpected error".into()));
+                    continue;
+                }
+                let want_stage = out["stage"].as_str().unwrap_or("script");
+                let got_stage = match f.stage {
+                    vue_sfc::ugc::VueStage::Parse => "parse",
+                    vue_sfc::ugc::VueStage::Template => "template",
+                    vue_sfc::ugc::VueStage::Style => "style",
+                    vue_sfc::ugc::VueStage::Script => "script",
+                };
+                // a plain thrown Error surfaces as a string, not a build error
+                if let Some(want_msg) = out["error"].as_str() {
+                    let got = f.errors.first().map(|e| e.msg.clone()).unwrap_or_default();
+                    if got_stage != want_stage {
+                        failed.push((
+                            source.to_string(),
+                            format!("stage got {got_stage} want {want_stage}"),
+                        ));
+                    } else if got != want_msg {
+                        failed.push((
+                            source.to_string(),
+                            format!("error got {got:?}\nwant {want_msg:?}"),
+                        ));
+                    } else {
+                        ok += 1;
+                        errs += 1;
+                    }
+                    continue;
+                }
+                let want_errors = out["error"]["errors"].as_array().cloned().unwrap_or_default();
+                let got_errors: Vec<serde_json::Value> = f
+                    .errors
+                    .iter()
+                    .map(|e| match &e.position {
+                        Some(p) => serde_json::json!({
+                            "type": "UgcBuildError",
+                            "msg": e.msg,
+                            "filePath": f.file_path,
+                            "position": { "line": p.line, "character": p.character },
+                        }),
+                        None => serde_json::json!(e.msg),
+                    })
+                    .collect();
+                let want_msg = out["error"]["msg"].as_str().unwrap_or("");
+                let got_msg = format!(
+                    "Found {} errors in file {}",
+                    f.errors.len(),
+                    f.file_path
+                );
+                if got_stage != want_stage {
+                    failed.push((
+                        source.to_string(),
+                        format!("stage got {got_stage} want {want_stage}"),
+                    ));
+                } else if got_errors != want_errors {
+                    failed.push((
+                        source.to_string(),
+                        format!("errors got {got_errors:?}\nwant {want_errors:?}"),
+                    ));
+                } else if got_msg != want_msg {
+                    failed.push((
+                        source.to_string(),
+                        format!("msg got {got_msg:?} want {want_msg:?}"),
+                    ));
+                } else {
+                    ok += 1;
+                    errs += 1;
+                }
+            }
+            Err(p) => {
+                let msg = p
+                    .downcast_ref::<String>()
+                    .cloned()
+                    .or_else(|| p.downcast_ref::<&str>().map(|s| s.to_string()))
+                    .unwrap_or_default();
+                failed.push((source.to_string(), format!("panic: {msg}")));
+            }
+        }
+    }
+    let before = failed.len();
+    failed.retain(|(src, _)| {
+        !UGC_DIAGNOSTIC_DIVERGENCE.iter().any(|m| src.contains(m))
+    });
+    eprintln!(
+        "ugc-vue: {ok}/{} match ({errs} matched as errors, {} known wording divergences)",
+        cases.len(),
+        before - failed.len()
+    );
+    report("ugc-vue", cases.len(), failed);
+}

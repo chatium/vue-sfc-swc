@@ -106,6 +106,11 @@ pub enum TypeDecl {
     Enum(Box<TsEnumDecl>),
 }
 
+/// byte offsets -> UTF-16 offsets, for code frames
+pub fn byte_to_utf16(source: &str, byte: usize) -> usize {
+    source[..byte.min(source.len())].encode_utf16().count()
+}
+
 /// `utf16` offsets from the SFC parser -> byte offsets for MagicString
 pub fn utf16_to_byte(source: &str, utf16_offset: usize) -> usize {
     if utf16_offset == 0 {
@@ -147,16 +152,29 @@ impl ScriptCompileContext {
             .unwrap_or(0);
 
         // `resolveParserPlugins` only enables TypeScript for ts/tsx blocks
-        let parse = |content: &str| -> Result<Module, String> {
-            crate::core::jsparse::parse_module(content, is_ts)
+        let parse = |content: &str, block_start: usize| -> Result<Module, String> {
+            crate::core::jsparse::parse_module_with_pos(content, is_ts).map_err(|(msg, pos)| {
+                // `parse()` in compileScript re-throws babel errors with the
+                // block-relative `(line:col)` and a frame over the whole SFC
+                let (line, col) = line_col(content, pos);
+                let at = byte_to_utf16(&source, block_start + pos);
+                format!(
+                    "[vue/compiler-sfc] {msg} ({line}:{col})\n\n{}\n{}",
+                    descriptor.filename,
+                    crate::core::codeframe::generate_code_frame(&source, at, at + 1)
+                )
+            })
         };
 
         let script_ast = match &descriptor.script {
-            Some(s) => Some(parse(&s.content)?),
+            Some(s) => {
+                let start = utf16_to_byte(&source, s.loc.start.offset.max(0) as usize);
+                Some(parse(&s.content, start)?)
+            }
             None => None,
         };
         let script_setup_ast = match &descriptor.script_setup {
-            Some(s) => Some(parse(&s.content)?),
+            Some(s) => Some(parse(&s.content, start_offset)?),
             None => None,
         };
 
@@ -228,6 +246,31 @@ impl ScriptCompileContext {
         format!("[@vue/compiler-sfc] {msg}\n\n{}\n", self.filename)
     }
 
+    /// `ctx.error(msg, node)` — includes the code frame for the node's span
+    pub fn error_at(&self, msg: &str, span: (usize, usize), script_setup: bool) -> String {
+        let offset = if script_setup {
+            self.start_offset
+        } else {
+            self.descriptor
+                .script
+                .as_ref()
+                .map(|s| utf16_to_byte(&self.source, s.loc.start.offset.max(0) as usize))
+                .unwrap_or(0)
+        };
+        let start = byte_to_utf16(&self.source, span.0 + offset);
+        let end = byte_to_utf16(&self.source, span.1 + offset);
+        format!(
+            "[@vue/compiler-sfc] {msg}\n\n{}\n{}",
+            self.filename,
+            crate::core::codeframe::generate_code_frame(&self.source, start, end)
+        )
+    }
+
+    /// `ctx.error(msg, node)` for a top-level `<script setup>` item
+    pub fn error_at_item(&self, msg: &str, span: (usize, usize)) -> String {
+        self.error_at(msg, span, true)
+    }
+
     pub fn set_binding(&mut self, key: &str, ty: BindingType) {
         self.binding_metadata
             .bindings
@@ -241,4 +284,12 @@ pub fn is_js(lang: &Option<String>) -> bool {
 
 pub fn is_ts(lang: &Option<String>) -> bool {
     matches!(lang.as_deref(), Some("ts") | Some("tsx"))
+}
+
+/// 1-based line, 0-based column of `pos` (babel's error position format)
+fn line_col(src: &str, pos: usize) -> (usize, usize) {
+    let head = &src[..pos.min(src.len())];
+    let line = head.matches('\n').count() + 1;
+    let col = head.rsplit('\n').next().unwrap_or("").chars().count();
+    (line, col)
 }

@@ -35,7 +35,11 @@ pub fn compile_style(options: StyleCompileOptions) -> StyleCompileResult {
 
     let mut errors = Vec::new();
     let source = match &options.preprocess_lang {
-        Some(lang) => match super::style::preprocessors::preprocess(lang, &options.source) {
+        Some(lang) => match super::style::preprocessors::preprocess_with_filename(
+            lang,
+            &options.source,
+            &options.filename,
+        ) {
             Ok(code) => code,
             Err(e) => {
                 return StyleCompileResult {

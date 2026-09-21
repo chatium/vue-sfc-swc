@@ -761,20 +761,23 @@ pub fn compile_script(
                     Decl::TsInterface(_) | Decl::TsTypeAlias(_) | Decl::TsModule(_)
                 ) =>
             {
-                return Err(ctx.error(
+                return Err(ctx.error_at_item(
                     "<script setup> cannot contain ES module exports. If you are using a previous version of <script setup>, please consult the updated RFC at https://github.com/vuejs/rfcs/pull/227.",
+                    sp_of_item(item),
                 ));
             }
             ModuleItem::ModuleDecl(ModuleDecl::ExportNamed(n)) if !n.type_only => {
-                return Err(ctx.error(
+                return Err(ctx.error_at_item(
                     "<script setup> cannot contain ES module exports. If you are using a previous version of <script setup>, please consult the updated RFC at https://github.com/vuejs/rfcs/pull/227.",
+                    sp_of_item(item),
                 ));
             }
             ModuleItem::ModuleDecl(ModuleDecl::ExportAll(_))
             | ModuleItem::ModuleDecl(ModuleDecl::ExportDefaultDecl(_))
             | ModuleItem::ModuleDecl(ModuleDecl::ExportDefaultExpr(_)) => {
-                return Err(ctx.error(
+                return Err(ctx.error_at_item(
                     "<script setup> cannot contain ES module exports. If you are using a previous version of <script setup>, please consult the updated RFC at https://github.com/vuejs/rfcs/pull/227.",
+                    sp_of_item(item),
                 ));
             }
             _ => {}
@@ -975,7 +978,8 @@ pub fn compile_script(
         }
         let scoped = sfc.styles.iter().any(|s| s.scoped);
         let (t_arena, children, parse_errors) =
-            reparse_template(&sfc.source).ok_or("failed to re-parse template")?;
+            super::compile_template::reparse_template(&sfc.source)
+                .ok_or("failed to re-parse template")?;
         let _ = template;
         let r = super::compile_template::compile_template_ast(
             t_arena,
@@ -990,6 +994,7 @@ pub fn compile_script(
                 ssr: options.template_ssr,
                 ssr_css_vars: sfc.css_vars.clone(),
                 binding_metadata: ctx.binding_metadata.clone(),
+                binding_metadata_provided: true,
                 expression_plugins: if ctx.is_ts {
                     vec!["typescript".to_string()]
                 } else {
@@ -1001,7 +1006,19 @@ pub fn compile_script(
             },
         );
         if let Some(err) = r.errors.first() {
-            return Err(err.message.clone());
+            let mut msg = err.message.clone();
+            if let Some(loc) = &err.loc {
+                msg += &format!(
+                    "\n\n{}\n{}\n",
+                    ctx.filename,
+                    crate::core::codeframe::generate_code_frame(
+                        &source,
+                        loc.start.offset.max(0) as usize,
+                        loc.end.offset.max(0) as usize,
+                    )
+                );
+            }
+            return Err(msg);
         }
         if !r.preamble.is_empty() {
             ctx.s.prepend(&r.preamble);
@@ -1340,23 +1357,4 @@ fn collect_top_level_awaits(stmt: &Stmt, out: &mut Vec<AwaitInfo>) {
         depth: 1,
     };
     v.visit_stmt_at(stmt, 0);
-}
-
-fn reparse_template(
-    source: &str,
-) -> Option<(Arena, Vec<crate::core::ast::NodeId>, Vec<crate::core::errors::CompilerError>)> {
-    use crate::core::ast::{Node, NodeType};
-    let (arena, root, errors) = crate::dom::compile::parse_sfc_template(source);
-    let children = arena.root(root).children.clone();
-    for c in children {
-        if arena.is(c, NodeType::Element) {
-            if let Node::Element(e) = arena.node(c) {
-                if e.tag == "template" {
-                    let inner = e.children.clone();
-                    return Some((arena, inner, errors));
-                }
-            }
-        }
-    }
-    None
 }

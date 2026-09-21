@@ -23,7 +23,43 @@ impl Fs for DenyFs {
     }
 }
 
-pub fn preprocess(lang: &str, source: &str) -> Result<String, String> {
+/// Reformats a grass error to dart-sass's shape. The wording of Sass errors
+/// still differs between the two implementations — see README.
+fn format_sass_error(e: &grass::Error, filename: &str) -> String {
+    use grass::ErrorKind as PublicSassErrorKind;
+    match e.clone().kind() {
+        PublicSassErrorKind::ParseError { message, loc, .. } => {
+            // the consumer denies filesystem imports with this message
+            let message = if message == "Can't find stylesheet to import." {
+                "Sass filesystem imports are disabled".to_string()
+            } else {
+                message
+            };
+            let line = loc.begin.line + 1;
+            let col = loc.begin.column + 1;
+            let padding = " ".repeat(line.to_string().len() + 1);
+            let carets = loc
+                .end
+                .column
+                .max(loc.begin.column)
+                .saturating_sub(loc.begin.column.min(loc.end.column))
+                .max(1);
+            format!(
+                "{message}\n{padding}╷\n{line} │ {}\n{padding}│ {}{}\n{padding}╵\n  {filename} {line}:{col}  root stylesheet",
+                loc.file.source_line(loc.begin.line),
+                " ".repeat(loc.begin.column),
+                "^".repeat(carets),
+            )
+        }
+        other => format!("{other:?}"),
+    }
+}
+
+pub fn preprocess_with_filename(
+    lang: &str,
+    source: &str,
+    filename: &str,
+) -> Result<String, String> {
     let syntax = match lang {
         // `lang="sass"` also parses as SCSS: Vue passes the legacy
         // `indentedSyntax` flag to sass's modern `compileString`, which
@@ -43,5 +79,9 @@ pub fn preprocess(lang: &str, source: &str) -> Result<String, String> {
             Some(s) => s.to_string(),
             None => css,
         })
-        .map_err(|e| e.to_string())
+        .map_err(|e| format_sass_error(&e, filename))
+}
+
+pub fn preprocess(lang: &str, source: &str) -> Result<String, String> {
+    preprocess_with_filename(lang, source, "input.scss")
 }

@@ -17,6 +17,7 @@ swc_core = { version = "=80.0.0", features = [
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = { version = "=1.0.151", features = ["preserve_order"] }
 base64 = "=0.22.1"
+sha1 = "=0.10.7"
 regex = "=1.12.3"
 grass = { version = "0.13.4", default-features = false, features = ["random"] }
 

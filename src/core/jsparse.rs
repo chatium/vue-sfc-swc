@@ -1,6 +1,6 @@
 //! swc-backed replacement for the `@babel/parser` calls the JS compiler makes.
 
-use swc_core::common::{FileName, SourceMap, sync::Lrc};
+use swc_core::common::{FileName, SourceMap, Spanned, sync::Lrc};
 use swc_core::ecma::ast::{Expr, Module, Program};
 use swc_core::ecma::parser::{EsSyntax, Parser, StringInput, Syntax, TsSyntax, lexer::Lexer};
 
@@ -43,6 +43,34 @@ pub fn parse_expression(src: &str, ts: bool) -> Result<Expr, String> {
             Ok(expr)
         }
         Err(e) => Err(e.into_kind().msg().to_string()),
+    }
+}
+
+/// Parses `src` as an ES module, reporting the byte offset of a syntax error.
+pub fn parse_module_with_pos(src: &str, ts: bool) -> Result<Module, (String, usize)> {
+    let cm: Lrc<SourceMap> = Default::default();
+    let fm = cm.new_source_file(Lrc::new(FileName::Anon), src.to_string());
+    let base = fm.start_pos;
+    let lexer = Lexer::new(
+        syntax(ts),
+        Default::default(),
+        StringInput::from(&*fm),
+        None,
+    );
+    let at = |e: swc_core::ecma::parser::error::Error| {
+        let pos = (e.span().lo.0.saturating_sub(base.0)) as usize;
+        (e.into_kind().msg().to_string(), pos)
+    };
+    let mut parser = Parser::new_from(lexer);
+    match parser.parse_module() {
+        Ok(mut module) => {
+            if let Some(e) = parser.take_errors().into_iter().next() {
+                return Err(at(e));
+            }
+            super::spans::rebase_module(&mut module, base);
+            Ok(module)
+        }
+        Err(e) => Err(at(e)),
     }
 }
 
