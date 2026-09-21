@@ -91,15 +91,22 @@ pub fn parse_css_vars(sfc: &SfcDescriptor) -> Vec<String> {
 
 /// `getEscapedCssVarName` + `genVarName` (dev mode only — `isProd` hashing is
 /// not used by the SFC pipeline we target).
-pub fn get_escaped_css_var_name(key: &str, do_double_escape: bool) -> String {
+pub fn get_escaped_css_var_name(key: &str, double_escape: bool) -> String {
+    const SYMBOLS: &str = " !\"#$%&'()*+,./:;<=>?@[\\]^`{|}~";
     let mut out = String::new();
     for c in key.chars() {
-        if "!\"#$%&'()*+,./:;<=>?@[\\]^`{|}~".contains(c) {
-            out.push('\\');
-            if do_double_escape {
+        if SYMBOLS.contains(c) {
+            if double_escape {
+                if c == '"' {
+                    out.push_str("\\\\\\\"");
+                } else {
+                    out.push_str("\\\\");
+                    out.push(c);
+                }
+            } else {
                 out.push('\\');
+                out.push(c);
             }
-            out.push(c);
         } else {
             out.push(c);
         }

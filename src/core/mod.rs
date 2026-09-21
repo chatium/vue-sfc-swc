@@ -1,8 +1,13 @@
 pub mod ast;
 pub mod entities;
 pub mod errors;
+pub mod js_walk;
 pub mod jsparse;
+pub mod options;
 pub mod parser;
+pub mod patch_flags;
 pub mod serialize;
 pub mod spans;
+pub mod transform;
+pub mod transforms;
 pub mod utils;
