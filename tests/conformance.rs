@@ -462,3 +462,49 @@ fn selector_scoped() {
     }
     report("selector-scoped", cases.len(), failed);
 }
+
+#[test]
+fn compile_style() {
+    let cases = load("compile-style");
+    let mut failed: Vec<(String, String)> = Vec::new();
+    let mut ok = 0usize;
+    for case in &cases {
+        let source = case["source"].as_str().unwrap();
+        let scoped = case["scoped"].as_bool().unwrap();
+        let trim = case["trim"].as_bool().unwrap();
+        let want_error = case.get("error").is_some();
+        let r = std::panic::catch_unwind(|| {
+            vue_sfc::sfc::compile_style::compile_style(
+                vue_sfc::sfc::compile_style::StyleCompileOptions {
+                    source: source.to_string(),
+                    filename: "a.vue".to_string(),
+                    id: "data-v-xxxxxxxx".to_string(),
+                    scoped,
+                    trim: Some(trim),
+                    ..Default::default()
+                },
+            )
+        });
+        match r {
+            Ok(r) => {
+                if want_error {
+                    if !r.errors.is_empty() {
+                        ok += 1;
+                    } else {
+                        failed.push((source.to_string(), "expected an error".into()));
+                    }
+                } else if r.errors.is_empty() && r.code == case["code"].as_str().unwrap() {
+                    ok += 1;
+                } else {
+                    failed.push((
+                        format!("{source:?} scoped={scoped} trim={trim}"),
+                        format!("got  {:?}\nwant {:?}", r.code, case["code"]),
+                    ));
+                }
+            }
+            Err(_) => failed.push((source.to_string(), "panic".into())),
+        }
+    }
+    eprintln!("compile-style: {ok}/{} match", cases.len());
+    report("compile-style", cases.len(), failed);
+}

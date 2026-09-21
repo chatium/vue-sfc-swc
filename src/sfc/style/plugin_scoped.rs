@@ -41,7 +41,46 @@ pub fn scoped_plugin(tree: &mut CssTree, id: &str) {
     let mut processed: HashSet<usize> = HashSet::new();
     let mut deep_rules: HashSet<usize> = HashSet::new();
 
-    for node_id in tree.walk_ids(tree.root) {
+    // postcss re-visits nodes a plugin adds during the walk, so iterate until
+    // everything (including wrapped `&` rules) has been processed
+    let mut seen_atrules: HashSet<usize> = HashSet::new();
+    loop {
+        let ids = tree.walk_ids(tree.root);
+        let pending: Vec<usize> = ids
+            .iter()
+            .copied()
+            .filter(|i| {
+                let k = tree.get(*i).kind;
+                (k == CssKind::Rule && !processed.contains(i))
+                    || (k == CssKind::AtRule && !seen_atrules.contains(i))
+            })
+            .collect();
+        if pending.is_empty() {
+            break;
+        }
+        for node_id in pending {
+            match tree.get(node_id).kind {
+                CssKind::Rule => {
+                    process_rule(tree, id, node_id, &mut processed, &mut deep_rules);
+                }
+                CssKind::AtRule => {
+                    seen_atrules.insert(node_id);
+                    let name = tree.get(node_id).name.clone();
+                    let params = tree.get(node_id).params.clone();
+                    if is_keyframes(&name) && !params.ends_with(&format!("-{short_id}")) {
+                        let new = format!("{params}-{short_id}");
+                        keyframes.insert(params, new.clone());
+                        tree.get_mut(node_id).params = new;
+                        tree.get_mut(node_id).raws.params = None;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    #[allow(unreachable_code)]
+    for node_id in Vec::<usize>::new() {
         match tree.get(node_id).kind {
             CssKind::Rule => {
                 process_rule(tree, id, node_id, &mut processed, &mut deep_rules);
@@ -115,6 +154,8 @@ fn process_rule(
     }
     if let Some(parent) = tree.get(rule).parent {
         if tree.get(parent).kind == CssKind::AtRule && is_keyframes(&tree.get(parent).name) {
+            // postcss only visits each node once; the worklist needs the same
+            processed.insert(rule);
             return;
         }
     }

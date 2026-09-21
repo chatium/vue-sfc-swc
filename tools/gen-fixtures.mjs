@@ -230,3 +230,48 @@ for (const input of selCases) {
 }
 fs.writeFileSync('tests/fixtures/selector-scoped.json', JSON.stringify(selOut))
 console.log(`selector-scoped: ${selOut.length}`)
+
+// --- compileStyle -----------------------------------------------------------
+const styleOut = []
+const styleCases = [
+  ...cssCases,
+  ...selCases.map(s => `${s} { color: red }`),
+  '.a { color: v-bind(color) }',
+  '.a { color: v-bind("a.b") }',
+  '.a { color: v-bind(\'x\') }',
+  '@keyframes spin { from { transform: rotate(0) } }\n.a { animation: spin 1s }',
+  '@keyframes spin { }\n.a { animation-name: spin }',
+  '@-webkit-keyframes spin { }\n.a { -webkit-animation-name: spin }',
+  '.a {\n  color: red;\n  .b { color: blue }\n}',
+  '.a { &:hover { color: red } }',
+  '@media (min-width: 1px) { .a { color: red } }',
+  '.a :deep(.b) { color: red }',
+  '.a:deep(.b) .c { color: red }',
+  ':is(.a, .b :deep(.c)) .d { color: red }',
+  ':not(.a, .b :deep(.c)) .d { color: red }',
+  '.a ::v-deep .b { color: red }',
+  '::v-slotted(.a) { color: red }',
+  '.a { color: red }\n\n\n.b { color: blue }\n',
+]
+for (const source of styleCases) {
+  for (const scoped of [false, true]) {
+    for (const trim of [true, false]) {
+      let out
+      try {
+        const r = sfcApi.compileStyle({
+          source,
+          filename: 'a.vue',
+          id: 'data-v-xxxxxxxx',
+          scoped,
+          trim,
+        })
+        out = r.errors.length ? { error: String(r.errors[0].message || r.errors[0]) } : { code: r.code }
+      } catch (e) {
+        out = { error: String(e.message || e) }
+      }
+      styleOut.push({ source, scoped, trim, ...out })
+    }
+  }
+}
+fs.writeFileSync('tests/fixtures/compile-style.json', JSON.stringify(styleOut))
+console.log(`compile-style: ${styleOut.length}`)
