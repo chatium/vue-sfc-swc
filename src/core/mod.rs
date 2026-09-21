@@ -3,6 +3,7 @@ pub mod codegen;
 pub mod entities;
 pub mod errors;
 pub mod js_walk;
+pub mod js_value;
 pub mod jsparse;
 pub mod options;
 pub mod parser;

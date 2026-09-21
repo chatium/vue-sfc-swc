@@ -1,3 +1,4 @@
+pub mod attrs;
 pub mod compile;
 pub mod parser_options;
 pub mod transforms;

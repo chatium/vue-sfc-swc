@@ -4,7 +4,10 @@ import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
 const core = require('@vue/compiler-core')
 
-const templates = JSON.parse(fs.readFileSync('tests/corpus/templates.json', 'utf8'))
+const templates = [
+  ...JSON.parse(fs.readFileSync('tests/corpus/templates.json', 'utf8')),
+  ...JSON.parse(fs.readFileSync('tests/corpus/extra.json', 'utf8')),
+]
 
 function clean(value) {
   // drop babel ASTs and Sets, which we do not model
