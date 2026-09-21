@@ -182,6 +182,8 @@ pub struct CodegenOptions {
     pub in_ssr: bool,
     pub is_ts: bool,
     pub inline: bool,
+    /// `options.bindingMetadata` being present at all (it adds render args)
+    pub has_binding_metadata: bool,
 }
 
 impl Default for CodegenOptions {
@@ -200,6 +202,7 @@ impl Default for CodegenOptions {
             in_ssr: false,
             is_ts: false,
             inline: false,
+            has_binding_metadata: false,
         }
     }
 }

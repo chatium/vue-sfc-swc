@@ -88,7 +88,7 @@ pub fn run_exit(exit: ExitFn, ctx: &mut TransformContext) {
             branch,
             key,
         } => v_if::exit_if_root(if_node, branch, key, ctx),
-        ExitFn::Memo { node, exp } => v_memo::exit_memo(node, exp, ctx),
+        ExitFn::Memo { node, dir } => v_memo::exit_memo(node, dir, ctx),
         ExitFn::For {
             for_node,
             node,

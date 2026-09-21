@@ -27,7 +27,7 @@ pub enum ExitFn {
     },
     Memo {
         node: NodeId,
-        exp: NodeId,
+        dir: NodeId,
     },
     For {
         for_node: NodeId,

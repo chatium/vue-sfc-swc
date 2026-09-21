@@ -1,4 +1,5 @@
 pub mod ast;
+pub mod codegen;
 pub mod entities;
 pub mod errors;
 pub mod js_walk;

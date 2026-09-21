@@ -205,3 +205,47 @@ fn sfc_parse() {
     }
     report("sfc-parse", cases.len(), failed);
 }
+
+#[test]
+fn compile_dom() {
+    let cases = load("compile-dom");
+    let mut failed: Vec<(String, String)> = Vec::new();
+    let mut ok = 0usize;
+    for case in &cases {
+        let input = case["input"].as_str().unwrap();
+        let want = case["code"].as_str().unwrap();
+        let result = std::panic::catch_unwind(|| {
+            let mut opts = vue_sfc::dom::compile::CompileOptions::default();
+            opts.transform.prefix_identifiers = true;
+            opts.transform.hoist_static = true;
+            opts.transform.cache_handlers = true;
+            opts.transform.filename = "template.vue.html".to_string();
+            opts.codegen.mode = vue_sfc::core::options::CodegenMode::Module;
+            opts.codegen.prefix_identifiers = true;
+            opts.codegen.filename = "template.vue.html".to_string();
+            vue_sfc::dom::compile::compile(input, opts)
+        });
+        match result {
+            Ok(r) => {
+                if r.code == want {
+                    ok += 1;
+                } else {
+                    failed.push((
+                        input.to_string(),
+                        format!("got:\n{}\nwant:\n{}", r.code, want),
+                    ));
+                }
+            }
+            Err(e) => {
+                let msg = e
+                    .downcast_ref::<String>()
+                    .cloned()
+                    .or_else(|| e.downcast_ref::<&str>().map(|s| s.to_string()))
+                    .unwrap_or_default();
+                failed.push((input.to_string(), format!("panic: {msg}")));
+            }
+        }
+    }
+    eprintln!("compile-dom: {ok}/{} match", cases.len());
+    report("compile-dom", cases.len(), failed);
+}

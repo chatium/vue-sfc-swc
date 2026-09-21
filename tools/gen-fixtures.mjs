@@ -85,3 +85,33 @@ for (const source of sfcSources) {
 }
 fs.writeFileSync('tests/fixtures/sfc-parse.json', JSON.stringify(sfcOut))
 console.log(`sfc-parse: ${sfcOut.length}`)
+
+// --- compiler-dom compile (client render function) ---------------------------
+const dom = require('@vue/compiler-dom')
+const compileOut = []
+for (const input of templates) {
+  const errors = []
+  let code = null
+  try {
+    const r = dom.compile(input, {
+      mode: 'module',
+      prefixIdentifiers: true,
+      hoistStatic: true,
+      cacheHandlers: true,
+      sourceMap: false,
+      filename: 'template.vue.html',
+      onError: e => errors.push(e),
+      onWarn: () => {},
+    })
+    code = r.code
+  } catch (e) {
+    continue
+  }
+  compileOut.push({
+    input,
+    code,
+    errors: errors.map(e => ({ code: e.code ?? null, message: e.message })),
+  })
+}
+fs.writeFileSync('tests/fixtures/compile-dom.json', JSON.stringify(compileOut))
+console.log(`compile-dom: ${compileOut.length}`)

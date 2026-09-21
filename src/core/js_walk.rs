@@ -106,6 +106,8 @@ pub struct Walker<'a> {
     scope_stack: Vec<Vec<String>>,
     in_destructure_assignment: bool,
     in_new_expression: bool,
+    /// Vue keeps the *root* node's scope ids in `knownIds` (`node !== rootExp`)
+    suppress_root_pop: bool,
 }
 
 impl<'a> Walker<'a> {
@@ -117,6 +119,7 @@ impl<'a> Walker<'a> {
             scope_stack: Vec::new(),
             in_destructure_assignment: false,
             in_new_expression: false,
+            suppress_root_pop: false,
         }
     }
 
@@ -129,6 +132,11 @@ impl<'a> Walker<'a> {
     }
 
     fn pop_scope(&mut self) {
+        if self.suppress_root_pop && self.scope_stack.len() == 1 {
+            self.suppress_root_pop = false;
+            self.scope_stack.pop();
+            return;
+        }
         if let Some(ids) = self.scope_stack.pop() {
             for id in ids {
                 self.known_ids.unmark(&id);
@@ -194,6 +202,9 @@ impl<'a> Walker<'a> {
     // --- expressions --------------------------------------------------------
 
     pub fn walk_expr(&mut self, e: &Expr) {
+        if matches!(e, Expr::Arrow(_) | Expr::Fn(_) | Expr::Class(_)) {
+            self.suppress_root_pop = true;
+        }
         self.walk_expr_with(e, ParentKind::None)
     }
 
@@ -218,6 +229,7 @@ impl<'a> Walker<'a> {
                 self.push_scope();
                 if let Some(id) = &f.ident {
                     self.mark_scope(&id.sym);
+                    self.emit(&id.sym, id.span, false, ParentKind::Other, false, None, None);
                 }
                 self.walk_function(&f.function);
                 self.pop_scope();
@@ -228,7 +240,7 @@ impl<'a> Walker<'a> {
                     self.mark_pat(p);
                 }
                 for p in &a.params {
-                    self.walk_pat_defaults(p);
+                    self.walk_pat_binding(p);
                 }
                 match &*a.body {
                     ArrowFunctionBody::FunctionBody(b) => self.walk_block(&b.stmts),
@@ -323,6 +335,7 @@ impl<'a> Walker<'a> {
                 self.push_scope();
                 if let Some(id) = &c.ident {
                     self.mark_scope(&id.sym);
+                    self.emit(&id.sym, id.span, false, ParentKind::Other, false, None, None);
                 }
                 self.walk_class(&c.class);
                 self.pop_scope();
@@ -504,15 +517,7 @@ impl<'a> Walker<'a> {
     fn walk_pat_as_target(&mut self, p: &Pat) {
         match p {
             Pat::Ident(b) => {
-                self.emit(
-                    &b.id.sym,
-                    b.id.span,
-                    true,
-                    ParentKind::Other,
-                    false,
-                    None,
-                    None,
-                );
+                self.emit(&b.id.sym, b.span(), true, ParentKind::Other, false, None, None);
             }
             Pat::Array(a) => {
                 for el in a.elems.iter().flatten() {
@@ -562,16 +567,17 @@ impl<'a> Walker<'a> {
         }
     }
 
-    /// walks the default-value expressions of a (already marked) param pattern
-    fn walk_pat_defaults(&mut self, p: &Pat) {
+    /// Emits the pattern's binding identifiers (Babel reports every
+    /// `Identifier`, and a typed param's range covers its type annotation) and
+    /// walks any default-value expressions.
+    fn walk_pat_binding(&mut self, p: &Pat) {
         match p {
-            Pat::Assign(a) => {
-                self.walk_pat_defaults(&a.left);
-                self.walk_expr_with(&a.right, ParentKind::Other);
+            Pat::Ident(b) => {
+                self.emit(&b.id.sym, b.span(), false, ParentKind::Other, false, None, None);
             }
             Pat::Array(a) => {
                 for el in a.elems.iter().flatten() {
-                    self.walk_pat_defaults(el);
+                    self.walk_pat_binding(el);
                 }
             }
             Pat::Object(o) => {
@@ -579,20 +585,33 @@ impl<'a> Walker<'a> {
                     match prop {
                         ObjectPatProp::KeyValue(kv) => {
                             self.walk_prop_name(&kv.key);
-                            self.walk_pat_defaults(&kv.value);
+                            self.walk_pat_binding(&kv.value);
                         }
                         ObjectPatProp::Assign(a) => {
+                            self.emit(
+                                &a.key.id.sym,
+                                a.key.span(),
+                                false,
+                                ParentKind::Other,
+                                false,
+                                None,
+                                None,
+                            );
                             if let Some(v) = &a.value {
                                 self.walk_expr_with(v, ParentKind::Other);
                             }
                         }
-                        ObjectPatProp::Rest(r) => self.walk_pat_defaults(&r.arg),
+                        ObjectPatProp::Rest(r) => self.walk_pat_binding(&r.arg),
                     }
                 }
             }
-            Pat::Rest(r) => self.walk_pat_defaults(&r.arg),
+            Pat::Rest(r) => self.walk_pat_binding(&r.arg),
+            Pat::Assign(a) => {
+                self.walk_pat_binding(&a.left);
+                self.walk_expr_with(&a.right, ParentKind::Other);
+            }
             Pat::Expr(e) => self.walk_expr_with(e, ParentKind::Other),
-            _ => {}
+            Pat::Invalid(_) => {}
         }
     }
 
@@ -601,7 +620,7 @@ impl<'a> Walker<'a> {
             self.mark_pat(&p.pat);
         }
         for p in &f.params {
-            self.walk_pat_defaults(&p.pat);
+            self.walk_pat_binding(&p.pat);
         }
         if let Some(b) = &f.body {
             self.walk_block(&b.stmts);
@@ -778,6 +797,7 @@ impl<'a> Walker<'a> {
                     self.push_scope();
                     if let Some(p) = &h.param {
                         self.mark_pat(p);
+                        self.walk_pat_binding(p);
                     }
                     self.walk_block(&h.body.stmts);
                     self.pop_scope();
@@ -842,7 +862,7 @@ impl<'a> Walker<'a> {
 
     fn walk_var_decl(&mut self, v: &VarDecl) {
         for d in &v.decls {
-            self.walk_pat_defaults(&d.name);
+            self.walk_pat_binding(&d.name);
             if let Some(init) = &d.init {
                 self.walk_expr_with(init, ParentKind::Other);
             }
@@ -876,6 +896,11 @@ impl<'a> Walker<'a> {
                 }
             }
             Program::Script(s) => {
+                if let Some(Stmt::Expr(e)) = s.body.first() {
+                    if matches!(&*e.expr, Expr::Arrow(_) | Expr::Fn(_) | Expr::Class(_)) {
+                        self.suppress_root_pop = true;
+                    }
+                }
                 for stmt in &s.body {
                     self.walk_stmt(stmt);
                 }

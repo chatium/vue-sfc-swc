@@ -791,7 +791,16 @@ impl Arena {
         })))
     }
 
+    /// `createObjectProperty(key, value)` — a raw string key becomes a static
+    /// simple expression, as in JS.
     pub fn create_object_property(&mut self, key: NodeId, value: NodeId) -> NodeId {
+        let key = match self.node(key) {
+            Node::Str(s) => {
+                let s = s.clone();
+                self.simple_exp(s, true)
+            }
+            _ => key,
+        };
         self.add(Node::Property(Box::new(Property {
             key,
             value,

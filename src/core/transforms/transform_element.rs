@@ -659,9 +659,10 @@ pub fn build_props(
                 }
                 NodeType::JsCallExpression => {}
                 _ => {
+                    // helper() call order matters for the import list
+                    let helper = ctx.helper_node(RuntimeHelper::NORMALIZE_PROPS);
                     let guard = ctx.helper_node(RuntimeHelper::GUARD_REACTIVE_PROPS);
                     let inner = ctx.a.create_call_expression(guard, vec![pe]);
-                    let helper = ctx.helper_node(RuntimeHelper::NORMALIZE_PROPS);
                     props_expression = Some(ctx.a.create_call_expression(helper, vec![inner]));
                 }
             }

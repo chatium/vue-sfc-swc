@@ -16,11 +16,15 @@ pub fn transform_memo(node: NodeId, ctx: &mut TransformContext) -> Vec<ExitFn> {
         return Vec::new();
     }
     ctx.seen_memo.insert(node);
-    let exp = ctx.a.dir(dir).exp.unwrap();
-    vec![ExitFn::Memo { node, exp }]
+    vec![ExitFn::Memo { node, dir }]
 }
 
-pub fn exit_memo(node: NodeId, exp: NodeId, ctx: &mut TransformContext) {
+pub fn exit_memo(node: NodeId, dir: NodeId, ctx: &mut TransformContext) {
+    // `dir.exp` is read on exit: transformExpression has processed it by then
+    let exp = match ctx.a.dir(dir).exp {
+        Some(e) => e,
+        None => return,
+    };
     let codegen_node = ctx
         .a
         .el(node)
