@@ -207,3 +207,26 @@ for (const input of cssCases) {
 }
 fs.writeFileSync('tests/fixtures/postcss-roundtrip.json', JSON.stringify(cssOut))
 console.log(`postcss-roundtrip: ${cssOut.length}`)
+
+// --- selector round-trip ----------------------------------------------------
+const selectorParser = require('@vue/compiler-sfc/dist/compiler-sfc.cjs.js') && null
+const selCases = JSON.parse(fs.readFileSync('tests/corpus/selectors.json', 'utf8'))
+const selOut = []
+for (const input of selCases) {
+  // round-trip through the same selector parser Vue uses, via a no-op scoped run
+  let out
+  try {
+    out = sfcApi.compileStyle({
+      source: `${input} { color: red }`,
+      filename: 'a.vue',
+      id: 'data-v-xxxxxxxx',
+      scoped: true,
+      trim: false,
+    }).code
+  } catch (e) {
+    out = `ERROR: ${e.message}`
+  }
+  selOut.push({ input, scoped: out })
+}
+fs.writeFileSync('tests/fixtures/selector-scoped.json', JSON.stringify(selOut))
+console.log(`selector-scoped: ${selOut.length}`)

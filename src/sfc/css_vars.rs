@@ -185,3 +185,8 @@ const __setup__ = {default_var}.setup\n\
         gen_css_vars_code(css_vars, bindings, id, is_prod)
     )
 }
+
+/// `lexBinding` over a char slice, returning the index of the closing paren
+pub fn lex_binding_in(content: &[char], start: usize) -> Option<usize> {
+    lex_binding(content, start)
+}

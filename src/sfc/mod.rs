@@ -1,4 +1,5 @@
 pub mod compile_script;
+pub mod compile_style;
 pub mod compile_template;
 pub mod css_vars;
 pub mod magic_string;

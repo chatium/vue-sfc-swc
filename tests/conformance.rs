@@ -416,3 +416,49 @@ fn postcss_roundtrip() {
     }
     report("postcss-roundtrip", cases.len(), failed);
 }
+
+#[test]
+fn selector_roundtrip() {
+    let path = format!("{}/tests/corpus/selectors.json", env!("CARGO_MANIFEST_DIR"));
+    let text = std::fs::read_to_string(&path).unwrap();
+    let cases: Vec<String> = serde_json::from_str(&text).unwrap();
+    let mut failed: Vec<(String, String)> = Vec::new();
+    for input in &cases {
+        let root = vue_sfc::sfc::style::selector::parse(input);
+        let got = root.to_string();
+        if &got != input {
+            failed.push((input.clone(), format!("got {got:?}")));
+        }
+    }
+    report("selector-roundtrip", cases.len(), failed);
+}
+
+#[test]
+fn selector_scoped() {
+    let cases = load("selector-scoped");
+    let mut failed: Vec<(String, String)> = Vec::new();
+    for case in &cases {
+        let input = case["input"].as_str().unwrap();
+        let want = case["scoped"].as_str().unwrap();
+        if want.starts_with("ERROR:") {
+            continue;
+        }
+        let r = vue_sfc::sfc::compile_style::compile_style(
+            vue_sfc::sfc::compile_style::StyleCompileOptions {
+                source: format!("{input} {{ color: red }}"),
+                filename: "a.vue".to_string(),
+                id: "data-v-xxxxxxxx".to_string(),
+                scoped: true,
+                trim: Some(false),
+                ..Default::default()
+            },
+        );
+        if r.code != want {
+            failed.push((
+                input.to_string(),
+                format!("got  {:?}\nwant {:?}", r.code, want),
+            ));
+        }
+    }
+    report("selector-scoped", cases.len(), failed);
+}
