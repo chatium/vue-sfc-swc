@@ -1,0 +1,21 @@
+[package]
+name = "vue-sfc"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+swc_core = { version = "=80.0.0", features = [
+  "common",
+  "common_sourcemap",
+  "ecma_ast",
+  "ecma_parser",
+  "ecma_parser_typescript",
+  "ecma_visit",
+  "ecma_utils",
+] }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = { version = "=1.0.151", features = ["preserve_order"] }
+base64 = "=0.22.1"
+
+[dev-dependencies]
