@@ -508,3 +508,84 @@ fn compile_style() {
     eprintln!("compile-style: {ok}/{} match", cases.len());
     report("compile-style", cases.len(), failed);
 }
+
+#[test]
+fn sass() {
+    let cases = load("sass");
+    let mut failed: Vec<(String, String)> = Vec::new();
+    for case in &cases {
+        let lang = case["lang"].as_str().unwrap();
+        let source = case["source"].as_str().unwrap();
+        let want_error = case.get("error").is_some();
+        let r = vue_sfc::sfc::compile_style::compile_style(
+            vue_sfc::sfc::compile_style::StyleCompileOptions {
+                source: source.to_string(),
+                filename: "a.vue".to_string(),
+                id: "data-v-xxxxxxxx".to_string(),
+                preprocess_lang: Some(lang.to_string()),
+                ..Default::default()
+            },
+        );
+        if want_error {
+            if r.errors.is_empty() {
+                failed.push((source.to_string(), "expected an error".into()));
+            }
+            continue;
+        }
+        let want = case["code"].as_str().unwrap();
+        if r.code != want || !r.errors.is_empty() {
+            failed.push((
+                format!("{lang}: {source:?}"),
+                format!("got  {:?}\nwant {:?}\nerrors {:?}", r.code, want, r.errors),
+            ));
+        }
+    }
+    report("sass", cases.len(), failed);
+}
+
+#[test]
+fn css_modules() {
+    let cases = load("css-modules");
+    let mut failed: Vec<(String, String)> = Vec::new();
+    for case in &cases {
+        let source = case["source"].as_str().unwrap();
+        let want_error = case.get("error").is_some();
+        let r = vue_sfc::sfc::compile_style::compile_style(
+            vue_sfc::sfc::compile_style::StyleCompileOptions {
+                source: source.to_string(),
+                filename: "/foo/bar.vue".to_string(),
+                id: "data-v-xxxxxxxx".to_string(),
+                modules: true,
+                ..Default::default()
+            },
+        );
+        if want_error {
+            if r.errors.is_empty() {
+                failed.push((source.to_string(), "expected an error".into()));
+            }
+            continue;
+        }
+        let want_code = case["code"].as_str().unwrap();
+        if r.code != want_code {
+            failed.push((
+                source.to_string(),
+                format!("got  {:?}\nwant {:?}", r.code, want_code),
+            ));
+            continue;
+        }
+        let want_modules = case["modules"].as_object().unwrap();
+        let got: std::collections::BTreeMap<String, String> =
+            r.modules.unwrap_or_default().into_iter().collect();
+        let want: std::collections::BTreeMap<String, String> = want_modules
+            .iter()
+            .map(|(k, v)| (k.clone(), v.as_str().unwrap().to_string()))
+            .collect();
+        if got != want {
+            failed.push((
+                source.to_string(),
+                format!("modules got {got:?} want {want:?}"),
+            ));
+        }
+    }
+    report("css-modules", cases.len(), failed);
+}

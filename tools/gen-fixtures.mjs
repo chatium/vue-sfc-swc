@@ -275,3 +275,79 @@ for (const source of styleCases) {
 }
 fs.writeFileSync('tests/fixtures/compile-style.json', JSON.stringify(styleOut))
 console.log(`compile-style: ${styleOut.length}`)
+
+// --- sass / scss preprocessing ---------------------------------------------
+const sassCases = [
+  ['scss', '$c: red;\n.a { color: $c; }'],
+  ['scss', '.a { .b { color: red } }'],
+  ['scss', '.a { &:hover { color: red } }'],
+  ['scss', '@mixin m { color: red }\n.a { @include m; }'],
+  ['scss', '$m: (a: 1, b: 2);\n.a { width: map-get($m, a) * 1px }'],
+  ['scss', '.a { width: 1px + 2px }'],
+  ['scss', '@for $i from 1 through 3 { .c-#{$i} { width: $i * 1px } }'],
+  ['scss', '.a { color: rgba(0,0,0,.5) }'],
+  ['scss', '// line comment\n.a { color: red }'],
+  ['scss', '/* block */\n.a { color: red }'],
+  ['scss', '.a { @media (min-width: 1px) { color: red } }'],
+  ['scss', '%p { color: red }\n.a { @extend %p; }'],
+  ['sass', '.a\n  color: red'],
+  ['sass', '$c: blue\n.a\n  color: $c'],
+  ['sass', '.a\n  .b\n    color: red'],
+  ['scss', '.a { color: v-bind(color) }'],
+]
+const sassOut = []
+for (const [lang, source] of sassCases) {
+  let out
+  try {
+    const r = sfcApi.compileStyle({
+      source,
+      filename: 'a.vue',
+      id: 'data-v-xxxxxxxx',
+      scoped: false,
+      preprocessLang: lang,
+      preprocessCustomRequire: id => require(id),
+    })
+    out = r.errors.length ? { error: String(r.errors[0].message || r.errors[0]) } : { code: r.code }
+  } catch (e) {
+    out = { error: String(e.message || e) }
+  }
+  sassOut.push({ lang, source, ...out })
+}
+fs.writeFileSync('tests/fixtures/sass.json', JSON.stringify(sassOut))
+console.log(`sass: ${sassOut.length}`)
+
+// --- CSS modules ------------------------------------------------------------
+const moduleCases = [
+  '.a { color: red }',
+  '.a .b { color: red }',
+  '.a, .b { color: red }',
+  ':global(.g) .a { color: red }',
+  '.a:hover { color: red }',
+  '#id { color: red }',
+  '@keyframes spin { from {} }\n.a{animation:spin 1s}',
+  '@media (min-width: 1px) { .a { color: red } }',
+  '.a { color: red }\n.a { color: blue }',
+  ':global .g { color: red }',
+  '.a :global(.g) { color: red }',
+  'div.a > .b + .c { color: red }',
+]
+const modOut = []
+for (const source of moduleCases) {
+  let out
+  try {
+    const r = await sfcApi.compileStyleAsync({
+      source,
+      filename: '/foo/bar.vue',
+      id: 'data-v-xxxxxxxx',
+      modules: true,
+    })
+    out = r.errors.length
+      ? { error: String(r.errors[0].message || r.errors[0]) }
+      : { code: r.code, modules: r.modules }
+  } catch (e) {
+    out = { error: String(e.message || e) }
+  }
+  modOut.push({ source, ...out })
+}
+fs.writeFileSync('tests/fixtures/css-modules.json', JSON.stringify(modOut))
+console.log(`css-modules: ${modOut.length}`)

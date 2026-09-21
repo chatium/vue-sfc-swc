@@ -68,14 +68,19 @@ pub fn compile_style(options: StyleCompileOptions) -> StyleCompileResult {
     if options.scoped {
         scoped_plugin(&mut tree, &long_id);
     }
-    let modules = if options.modules {
-        Some(super::style::css_modules::apply(
-            &mut tree,
-            &options.filename,
-        ))
-    } else {
-        None
-    };
+    let mut modules = None;
+    if options.modules {
+        let r = super::style::css_modules::apply(&mut tree, &source);
+        if let Some(e) = r.error {
+            errors.push(e);
+            return StyleCompileResult {
+                code: String::new(),
+                errors,
+                modules: None,
+            };
+        }
+        modules = Some(r.exports);
+    }
 
     StyleCompileResult {
         code: stringify(&tree),
