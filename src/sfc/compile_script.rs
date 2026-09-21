@@ -977,15 +977,16 @@ pub fn compile_script(
             has_inlined_ssr_render_fn = true;
         }
         let scoped = sfc.styles.iter().any(|s| s.scoped);
-        let (t_arena, children, parse_errors) =
-            super::compile_template::reparse_template(&sfc.source)
-                .ok_or("failed to re-parse template")?;
+        // `compileTemplate` is handed the descriptor's own (untransformed) AST,
+        // so its parse errors are not re-reported here
+        let (t_arena, children, _) = super::compile_template::reparse_template(&sfc.source)
+            .ok_or("failed to re-parse template")?;
         let _ = template;
         let r = super::compile_template::compile_template_ast(
             t_arena,
             children,
             sfc.source.clone(),
-            parse_errors,
+            Vec::new(),
             super::compile_template::TemplateCompileOptions {
                 filename: ctx.filename.clone(),
                 id: scope_id.clone(),

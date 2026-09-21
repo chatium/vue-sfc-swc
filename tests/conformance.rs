@@ -386,6 +386,134 @@ fn compile_script() {
 }
 
 #[test]
+fn compile_script_ssr() {
+    let cases = load("compile-script-ssr");
+    let mut failed: Vec<(String, String)> = Vec::new();
+    let mut ok = 0usize;
+    let mut errored = 0usize;
+    for case in &cases {
+        let input = case["input"].as_str().unwrap();
+        let want_error = case.get("error").and_then(|e| e.as_str());
+        let result = std::panic::catch_unwind(|| {
+            let parsed = vue_sfc::sfc::parse::parse(
+                input,
+                vue_sfc::sfc::parse::SfcParseOptions {
+                    source_map: false,
+                    ..Default::default()
+                },
+            );
+            vue_sfc::sfc::compile_script::compile_script(
+                &parsed.descriptor,
+                &parsed.arena,
+                vue_sfc::sfc::script::context::ScriptCompileOptions {
+                    id: "xxxxxxxx".to_string(),
+                    inline_template: true,
+                    template_ssr: true,
+                    ..Default::default()
+                },
+            )
+        });
+        match (result, want_error) {
+            (Ok(Ok(r)), None) => {
+                let want = case["content"].as_str().unwrap();
+                if r.content == want {
+                    ok += 1;
+                } else {
+                    failed.push((
+                        format!("{input:?}"),
+                        format!("got:\n{}\n---want:\n{want}", r.content),
+                    ));
+                }
+            }
+            (Ok(Err(_)), Some(_)) => {
+                errored += 1;
+                ok += 1;
+            }
+            (Ok(Err(e)), None) => {
+                failed.push((format!("{input:?}"), format!("unexpected error: {e}")))
+            }
+            (Ok(Ok(_)), Some(e)) => {
+                failed.push((format!("{input:?}"), format!("expected error: {e}")))
+            }
+            (Err(p), _) => {
+                let msg = p
+                    .downcast_ref::<String>()
+                    .cloned()
+                    .or_else(|| p.downcast_ref::<&str>().map(|s| s.to_string()))
+                    .unwrap_or_default();
+                failed.push((format!("{input:?}"), format!("panic: {msg}")));
+            }
+        }
+    }
+    eprintln!(
+        "compile-script-ssr: {ok}/{} match ({errored} matched as errors)",
+        cases.len()
+    );
+    report("compile-script-ssr", cases.len(), failed);
+}
+
+/// `ssrCssVars`: the `_cssVars` binding SSR injects into each root element.
+#[test]
+fn ssr_css_vars() {
+    let cases = load("ssr-css-vars");
+    let mut failed: Vec<(String, String)> = Vec::new();
+    let mut ok = 0usize;
+    for case in &cases {
+        let input = case["input"].as_str().unwrap();
+        let want_error = case.get("error").is_some();
+        let result = std::panic::catch_unwind(|| {
+            let parsed = vue_sfc::sfc::parse::parse(
+                input,
+                vue_sfc::sfc::parse::SfcParseOptions {
+                    source_map: false,
+                    ..Default::default()
+                },
+            );
+            vue_sfc::sfc::compile_script::compile_script(
+                &parsed.descriptor,
+                &parsed.arena,
+                vue_sfc::sfc::script::context::ScriptCompileOptions {
+                    id: "xxxxxxxx".to_string(),
+                    inline_template: true,
+                    template_ssr: true,
+                    ..Default::default()
+                },
+            )
+        });
+        match result {
+            Ok(Ok(r)) => {
+                if want_error {
+                    failed.push((input.to_string(), "expected an error".into()));
+                } else if r.content == case["content"].as_str().unwrap() {
+                    ok += 1;
+                } else {
+                    failed.push((
+                        format!("{input:?}"),
+                        format!(
+                            "got:\n{}\n---want:\n{}",
+                            r.content,
+                            case["content"].as_str().unwrap()
+                        ),
+                    ));
+                }
+            }
+            Ok(Err(_)) if want_error => ok += 1,
+            Ok(Err(e)) => failed.push((format!("{input:?}"), format!("unexpected error: {e}"))),
+            Err(p) => {
+                let msg = p
+                    .downcast_ref::<String>()
+                    .cloned()
+                    .or_else(|| p.downcast_ref::<&str>().map(|s| s.to_string()))
+                    .unwrap_or_default();
+                failed.push((format!("{input:?}"), format!("panic: {msg}")));
+            }
+        }
+    }
+    eprintln!("ssr-css-vars: {ok}/{} match", cases.len());
+    report("ssr-css-vars", cases.len(), failed);
+}
+
+#[test]
 fn postcss_roundtrip() {
     let cases = load("postcss-roundtrip");
     let mut failed: Vec<(String, String)> = Vec::new();

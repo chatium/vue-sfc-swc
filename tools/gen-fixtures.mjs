@@ -374,3 +374,59 @@ for (const input of templates) {
 }
 fs.writeFileSync('tests/fixtures/compile-ssr.json', JSON.stringify(ssrOut))
 console.log(`compile-ssr: ${ssrOut.length}`)
+
+// --- compileScript({ templateOptions: { ssr: true } }) ----------------------
+const scriptSsrOut = []
+for (const source of sfcSources) {
+  let descriptor
+  try {
+    descriptor = sfcApi.parse(source, { filename: 'anonymous.vue', sourceMap: false }).descriptor
+  } catch {
+    continue
+  }
+  if (!descriptor.script && !descriptor.scriptSetup) continue
+  let out
+  try {
+    const r = sfcApi.compileScript(descriptor, {
+      id: 'xxxxxxxx',
+      inlineTemplate: true,
+      sourceMap: false,
+      templateOptions: { ssr: true },
+    })
+    out = { content: r.content, bindings: r.bindings ? { ...r.bindings } : null }
+  } catch (e) {
+    out = { error: String(e.message || e) }
+  }
+  scriptSsrOut.push({ input: source, ...out })
+}
+fs.writeFileSync('tests/fixtures/compile-script-ssr.json', JSON.stringify(scriptSsrOut))
+console.log(`compile-script-ssr: ${scriptSsrOut.length}`)
+
+// --- ssrCssVars: <style> v-bind() with an SSR inline template ---------------
+const ssrCssVarOut = []
+for (const tpl of templates) {
+  if (tpl.includes('</template>') || tpl.includes('<script')) continue
+  const source =
+    `<template>${tpl}</template>\n` +
+    `<script setup>const color = 'red'</script>\n` +
+    `<style>div { color: v-bind(color) }</style>`
+  let out
+  try {
+    const descriptor = sfcApi.parse(source, {
+      filename: 'anonymous.vue',
+      sourceMap: false,
+    }).descriptor
+    const r = sfcApi.compileScript(descriptor, {
+      id: 'xxxxxxxx',
+      inlineTemplate: true,
+      sourceMap: false,
+      templateOptions: { ssr: true },
+    })
+    out = { content: r.content }
+  } catch (e) {
+    out = { error: String(e.message || e) }
+  }
+  ssrCssVarOut.push({ input: source, ...out })
+}
+fs.writeFileSync('tests/fixtures/ssr-css-vars.json', JSON.stringify(ssrCssVarOut))
+console.log(`ssr-css-vars: ${ssrCssVarOut.length}`)
