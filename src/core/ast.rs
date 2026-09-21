@@ -143,9 +143,10 @@ impl RuntimeHelper {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Position {
-    pub offset: usize,
-    pub line: usize,
-    pub column: usize,
+    /// signed, because the JS parser can emit `-1` offsets for truncated input
+    pub offset: i64,
+    pub line: i64,
+    pub column: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

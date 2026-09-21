@@ -187,12 +187,12 @@ pub fn advance_position_with_clone(pos: &Position, source: &str, n: Option<usize
         }
     }
     Position {
-        offset: pos.offset + n,
-        line: pos.line + lines_count,
+        offset: pos.offset + n as i64,
+        line: pos.line + lines_count as i64,
         column: if last_newline_pos == -1 {
-            pos.column + n
+            pos.column + n as i64
         } else {
-            n - last_newline_pos as usize
+            n as i64 - last_newline_pos
         },
     }
 }

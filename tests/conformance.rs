@@ -4,6 +4,7 @@
 use serde_json::Value;
 use vue_sfc::core::parser::{ParserOptions, base_parse};
 use vue_sfc::core::serialize;
+use vue_sfc::sfc::parse::{AttrValue, SfcBlock, SfcParseOptions};
 
 fn load(name: &str) -> Vec<Value> {
     let path = format!("{}/tests/fixtures/{name}.json", env!("CARGO_MANIFEST_DIR"));
@@ -112,4 +113,95 @@ fn corpus_is_not_vacuous() {
         .filter(|c| c["ast"]["children"].as_array().map(|a| !a.is_empty()).unwrap_or(false))
         .count();
     assert!(with_children > 500, "only {with_children} non-empty ASTs");
+}
+
+
+fn block_json(b: Option<&SfcBlock>) -> Value {
+    match b {
+        None => Value::Null,
+        Some(b) => {
+            let attrs: serde_json::Map<String, Value> = b
+                .attrs
+                .iter()
+                .map(|(k, v)| {
+                    (
+                        k.clone(),
+                        match v {
+                            AttrValue::True => Value::Bool(true),
+                            AttrValue::Str(s) => Value::String(s.clone()),
+                        },
+                    )
+                })
+                .collect();
+            serde_json::json!({
+                "type": b.block_type,
+                "content": b.content,
+                "attrs": Value::Object(attrs),
+                "lang": b.lang.clone(),
+                "src": b.src.clone(),
+                "scoped": b.scoped,
+                "module": b.module.as_ref().map(|m| match m {
+                    AttrValue::True => Value::Bool(true),
+                    AttrValue::Str(s) => Value::String(s.clone()),
+                }),
+                "setup": b.setup.as_ref().map(|m| match m {
+                    AttrValue::True => Value::Bool(true),
+                    AttrValue::Str(s) => Value::String(s.clone()),
+                }),
+                "loc": serde_json::json!({
+                    "start": {"column": b.loc.start.column, "line": b.loc.start.line, "offset": b.loc.start.offset},
+                    "end": {"column": b.loc.end.column, "line": b.loc.end.line, "offset": b.loc.end.offset},
+                    "source": b.loc.source,
+                }),
+            })
+        }
+    }
+}
+
+#[test]
+fn sfc_parse() {
+    let cases = load("sfc-parse");
+    let mut failed: Vec<(String, String)> = Vec::new();
+    for case in &cases {
+        let input = case["input"].as_str().unwrap();
+        let r = vue_sfc::sfc::parse::parse(
+            input,
+            SfcParseOptions {
+                source_map: false,
+                ..Default::default()
+            },
+        );
+        let d = &r.descriptor;
+        let got = serde_json::json!({
+            "template": block_json(d.template.as_ref()),
+            "script": block_json(d.script.as_ref()),
+            "scriptSetup": block_json(d.script_setup.as_ref()),
+            "styles": Value::Array(d.styles.iter().map(|b| block_json(Some(b))).collect()),
+            "customBlocks": Value::Array(d.custom_blocks.iter().map(|b| block_json(Some(b))).collect()),
+            "cssVars": d.css_vars,
+            "slotted": d.slotted,
+        });
+        let want = &case["descriptor"];
+        if &got != want {
+            failed.push((input.to_string(), first_diff(&got, want, "$")));
+            continue;
+        }
+        let want_errors = case["errors"].as_array().unwrap();
+        if r.errors.len() != want_errors.len() {
+            failed.push((
+                input.to_string(),
+                format!(
+                    "error count {} != {}: got {:?}, want {:?}",
+                    r.errors.len(),
+                    want_errors.len(),
+                    r.errors.iter().map(|e| &e.message).collect::<Vec<_>>(),
+                    want_errors
+                        .iter()
+                        .map(|e| e["message"].as_str().unwrap())
+                        .collect::<Vec<_>>()
+                ),
+            ));
+        }
+    }
+    report("sfc-parse", cases.len(), failed);
 }

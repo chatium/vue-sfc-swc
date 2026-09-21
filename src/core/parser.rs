@@ -304,8 +304,8 @@ impl Parser {
     }
 
     pub fn get_pos(&self, index: usize) -> Position {
-        let mut line = 1usize;
-        let mut column = index + 1;
+        let mut line = 1i64;
+        let mut column = index as i64 + 1;
         let length = self.newlines.len();
         let mut j: i64 = -1;
         if length > 100 {
@@ -329,14 +329,38 @@ impl Parser {
             }
         }
         if j >= 0 {
-            line = j as usize + 2;
-            column = index - self.newlines[j as usize];
+            line = j + 2;
+            column = (index - self.newlines[j as usize]) as i64;
         }
         Position {
             column,
             line,
-            offset: index,
+            offset: index as i64,
         }
+    }
+
+    /// `getPos` for the negative offsets the JS parser can produce on
+    /// truncated input (`sectionStart === -1`).
+    fn get_pos_signed(&self, index: i64) -> Position {
+        if index < 0 {
+            Position {
+                column: index + 1,
+                line: 1,
+                offset: index,
+            }
+        } else {
+            self.get_pos(index as usize)
+        }
+    }
+
+    /// `String.prototype.slice` semantics for a possibly negative start.
+    fn get_slice_signed(&self, start: i64, end: usize) -> String {
+        let start = if start < 0 {
+            (self.buffer.len() as i64 + start).max(0) as usize
+        } else {
+            start as usize
+        };
+        self.get_slice(start, end)
     }
 
     fn get_loc(&self, start: usize, end: usize) -> SourceLocation {
@@ -358,7 +382,7 @@ impl Parser {
 
     fn set_loc_end(&self, loc: &mut SourceLocation, end: usize) {
         loc.end = self.get_pos(end);
-        loc.source = self.get_slice(loc.start.offset, end);
+        loc.source = self.get_slice(loc.start.offset.max(0) as usize, end);
     }
 
     fn emit_error(&mut self, code: ErrorCode, index: usize) {
@@ -1081,7 +1105,7 @@ impl Parser {
         if self.section_start >= end_index as i64 {
             return;
         }
-        let s = self.section_start as usize;
+        let s = self.section_start.max(0) as usize;
         if self.state == State::InCommentLike {
             if self.current_seq_kind == SeqKind::CdataEnd {
                 self.on_cdata(s, end_index);
@@ -1105,6 +1129,10 @@ impl Parser {
                 | State::InClosingTagName
         ) {
             // tag is ignored
+        } else if self.section_start < 0 {
+            let content = self.get_slice_signed(self.section_start, end_index);
+            let start_pos = self.get_pos_signed(self.section_start);
+            self.on_text_at(content, start_pos, end_index);
         } else {
             self.on_text_slice(s, end_index);
         }
@@ -1125,7 +1153,7 @@ impl Parser {
                 _ => unreachable!(),
             };
             let end_pos = self.get_pos(end);
-            let src = self.get_slice(start_off, end);
+            let src = self.get_slice(start_off.max(0) as usize, end);
             if let Some(Node::Text(t)) = self.current_children_mut().last_mut() {
                 t.content.push_str(&content);
                 t.loc.end = end_pos;
@@ -1133,6 +1161,31 @@ impl Parser {
             }
         } else {
             let loc = self.get_loc(start, end);
+            self.current_children_mut()
+                .push(Node::Text(Box::new(TextNode { content, loc })));
+        }
+    }
+
+    fn on_text_at(&mut self, content: String, start_pos: Position, end: usize) {
+        let merge = matches!(self.current_children_mut().last(), Some(Node::Text(_)));
+        if merge {
+            let start_off = match self.current_children_mut().last() {
+                Some(Node::Text(t)) => t.loc.start.offset,
+                _ => unreachable!(),
+            };
+            let end_pos = self.get_pos(end);
+            let src = self.get_slice(start_off.max(0) as usize, end);
+            if let Some(Node::Text(t)) = self.current_children_mut().last_mut() {
+                t.content.push_str(&content);
+                t.loc.end = end_pos;
+                t.loc.source = src;
+            }
+        } else {
+            let loc = SourceLocation {
+                start: start_pos,
+                end: self.get_pos(end),
+                source: content.clone(),
+            };
             self.current_children_mut()
                 .push(Node::Text(Box::new(TextNode { content, loc })));
         }
@@ -1219,7 +1272,8 @@ impl Parser {
             self.in_pre += 1;
         }
         if (self.options.is_void_tag)(&tag) {
-            self.on_close_tag(open, end, false);
+            let sfc_root = self.in_sfc_root();
+            self.on_close_tag(open, end, false, sfc_root);
         } else {
             self.stack.insert(0, open);
             if ns == Namespace::Svg || ns == Namespace::MathMl {
@@ -1239,7 +1293,8 @@ impl Parser {
         self.end_open_tag(end);
         if self.stack.first().map(|o| o.el.tag.as_str()) == Some(name.as_str()) {
             let el = self.stack.remove(0);
-            self.on_close_tag(el, end, false);
+            let sfc_root = self.in_sfc_root();
+            self.on_close_tag(el, end, false, sfc_root);
         }
     }
 
@@ -1261,11 +1316,12 @@ impl Parser {
         if found {
             if found_index > 0 {
                 let off = self.stack[0].el.loc.start.offset;
-                self.emit_error(ErrorCode::X_MISSING_END_TAG, off);
+                self.emit_error(ErrorCode::X_MISSING_END_TAG, off.max(0) as usize);
             }
             for j in 0..=found_index {
                 let el = self.stack.remove(0);
-                self.on_close_tag(el, end, j < found_index);
+                let sfc_root = self.in_sfc_root();
+                self.on_close_tag(el, end, j < found_index, sfc_root);
             }
         } else {
             let idx = self.back_track(start, cc::LT);
@@ -1458,6 +1514,7 @@ impl Parser {
             Some(p) => p.loc().start.offset,
             None => return,
         };
+        let start = start.max(0) as usize;
         let name = self.get_slice(start, end);
         if let Some(Node::Directive(d)) = self.current_prop.as_mut() {
             d.raw_name = Some(name.clone());
@@ -1482,9 +1539,9 @@ impl Parser {
         if self.current_open_tag.is_some() && self.current_prop.is_some() {
             let mut prop = self.current_prop.take().unwrap();
             {
-                let start_off = prop.loc().start.offset;
+                let start_off = prop.loc().start.offset.max(0) as usize;
                 let pos = self.get_pos(end);
-                let src = self.get_slice(start_off, end);
+                let src = self.get_slice(start_off.max(0) as usize, end);
                 let loc: &mut SourceLocation = match &mut prop {
                     Node::Attribute(a) => &mut a.loc,
                     Node::Directive(d) => &mut d.loc,
@@ -1646,13 +1703,14 @@ impl Parser {
         }
         while !self.stack.is_empty() {
             let el = self.stack.remove(0);
-            let off = el.el.loc.start.offset;
-            self.on_close_tag(el, end.saturating_sub(1), false);
+            let off = el.el.loc.start.offset.max(0) as usize;
+            // JS `onend` does not shift the stack, so `inSFCRoot` is never true here.
+            self.on_close_tag(el, end.saturating_sub(1), false, false);
             self.emit_error(ErrorCode::X_MISSING_END_TAG, off);
         }
     }
 
-    fn on_close_tag(&mut self, open: OpenElement, end: usize, is_implied: bool) {
+    fn on_close_tag(&mut self, open: OpenElement, end: usize, is_implied: bool, sfc_root: bool) {
         let OpenElement { mut el, id } = open;
 
         if is_implied {
@@ -1663,7 +1721,7 @@ impl Parser {
             self.set_loc_end(&mut el.loc, idx);
         }
 
-        if self.in_sfc_root() {
+        if sfc_root {
             let inner_end = if let Some(last) = el.children.last() {
                 last.loc().end
             } else {
@@ -1673,8 +1731,8 @@ impl Parser {
                 inner.end = inner_end;
             }
             let (s, e) = (
-                el.inner_loc.as_ref().unwrap().start.offset,
-                el.inner_loc.as_ref().unwrap().end.offset,
+                el.inner_loc.as_ref().unwrap().start.offset.max(0) as usize,
+                el.inner_loc.as_ref().unwrap().end.offset.max(0) as usize,
             );
             let src = self.get_slice(s, e);
             if let Some(inner) = el.inner_loc.as_mut() {
@@ -1876,7 +1934,7 @@ impl Parser {
                 Ok(ast) => exp.as_simple_exp_mut().ast = ast,
                 Err(msg) => {
                     exp.as_simple_exp_mut().ast = ExpAst::Failed;
-                    let off = loc.start.offset;
+                    let off = loc.start.offset.max(0) as usize;
                     self.emit_error_msg(ErrorCode::X_INVALID_EXPRESSION, off, &msg);
                 }
             }
@@ -1891,7 +1949,7 @@ impl Parser {
         let (lhs, rhs) = super::utils::match_for_alias(&exp)?;
 
         let mut make = |content: String, offset: usize, as_param: bool, me: &mut Self| -> Node {
-            let start = loc.start.offset + offset;
+            let start = loc.start.offset.max(0) as usize + offset;
             let end = start + content.encode_utf16().count();
             let l = me.get_loc(start, end);
             me.create_exp(
@@ -2027,9 +2085,9 @@ fn dir_to_attr(dir: Node) -> Node {
     let name_loc = SourceLocation {
         start: d.loc.start,
         end: Position {
-            offset: name_start + utf16_len(&raw_name),
+            offset: name_start + utf16_len(&raw_name) as i64,
             line: d.loc.start.line,
-            column: d.loc.start.column + utf16_len(&raw_name),
+            column: d.loc.start.column + utf16_len(&raw_name) as i64,
         },
         source: raw_name.clone(),
     };
