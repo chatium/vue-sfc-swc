@@ -77,17 +77,22 @@ Current state — every case byte-identical:
 
 | suite | cases |
 | --- | --- |
-| `parse-base` | 620 |
-| `sfc-parse` | 180 |
-| `compile-dom` | 656 |
-| `compile-template` | 1312 |
-| `compile-ssr` | 655 |
-| `compile-script` | 200 |
-| `compile-script-ssr` | 100 |
-| `ssr-css-vars` | 652 |
+| `parse-base` | 674 |
+| `sfc-parse` | 238 |
+| `compile-dom` | 673 |
+| `compile-template` | 1346 |
+| `compile-ssr` | 672 |
+| `compile-script` | 204 |
+| `compile-script-ssr` | 102 |
+| `ssr-css-vars` | 656 |
 | `compile-style` | 448 |
-| `postcss-roundtrip` / `selector-*` | 208 |
-| `ugc-vue` (end to end) | 250 of 256 |
+| `compile-template-opts` / `compile-script-opts` / `compile-style-opts` | 476 |
+| `postcss-roundtrip` / `selector-scoped` / `css-modules` / `sass` / `rewrite-default` | 158 |
+| `ugc-vue` (end to end) | 288 |
+
+The `*-opts` suites vary the *options* rather than the input — the same sources compiled with
+`isProd`, `scoped`, `slotted`, `ssr`, `inlineTemplate`, `genDefaultAs`, `customElement` and CSS
+`modules`, in the combinations the consumer and the official tests use.
 
 `tools/check-dir.mjs <dir>` runs the same end-to-end check over a tree of real `.vue` files without
 vendoring them — it writes `tests/fixtures/ugc-vue-local.json` (gitignored), which `ugc_vue_local`

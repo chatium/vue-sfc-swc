@@ -259,15 +259,9 @@ fn get_slot_node(a: &Arena, node: NodeId, name: SlotKey) -> Option<NodeId> {
             SlotKey::Name(n) => {
                 matches!(a.node(key), Node::SimpleExpression(e) if e.content == n)
             }
-            SlotKey::Node(id) => {
-                key == id
-                    || match (a.node(key), a.node(id)) {
-                        (Node::SimpleExpression(a1), Node::SimpleExpression(b1)) => {
-                            a1.content == b1.content
-                        }
-                        _ => false,
-                    }
-            }
+            // `p.key === name` compares the nodes themselves: a second
+            // `<template #a>` carries its own arg node and matches nothing
+            SlotKey::Node(id) => key == id,
         };
         if matched {
             return Some(a.prop(*p).value);

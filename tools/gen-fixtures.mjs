@@ -430,3 +430,96 @@ for (const tpl of templates) {
 }
 fs.writeFileSync('tests/fixtures/ssr-css-vars.json', JSON.stringify(ssrCssVarOut))
 console.log(`ssr-css-vars: ${ssrCssVarOut.length}`)
+
+// --- the option surface the corpora above keep fixed ------------------------
+// A curated subset crossed with the options `isProd`, `slotted`,
+// `genDefaultAs`, `customElement` and `modules` + `scoped`.
+const optTemplates = [
+  '<div>{{ a }}</div>',
+  '<div class="x">static</div>',
+  '<Comp><template #a="{ p }">{{ p }}</template></Comp>',
+  '<Comp><slot name="a"/></Comp>',
+  '<div v-for="i in list" :key="i">{{ i }}</div>',
+  '<div :class="cls" :style="sty">{{ a }}</div>',
+  '<input v-model="a">',
+  '<div v-if="a">x</div><div v-else>y</div>',
+]
+const templateOptOut = []
+for (const input of optTemplates) {
+  for (const opts of [
+    { isProd: true },
+    { isProd: true, scoped: true },
+    { scoped: true, slotted: false },
+    { ssr: true, isProd: true },
+  ]) {
+    let r
+    try {
+      r = sfcApi.compileTemplate({
+        source: input,
+        filename: 'anonymous.vue',
+        id: 'someid',
+        ...opts,
+      })
+    } catch (e) {
+      continue
+    }
+    templateOptOut.push({ input, opts, code: r.code })
+  }
+}
+fs.writeFileSync('tests/fixtures/compile-template-opts.json', JSON.stringify(templateOptOut))
+console.log(`compile-template-opts: ${templateOptOut.length}`)
+
+const scriptOptOut = []
+for (const source of sfcSources) {
+  let descriptor
+  try {
+    descriptor = sfcApi.parse(source, { filename: 'anonymous.vue', sourceMap: false }).descriptor
+  } catch {
+    continue
+  }
+  if (!descriptor.script && !descriptor.scriptSetup) continue
+  for (const opts of [
+    { isProd: true },
+    { isProd: true, inlineTemplate: true },
+    { genDefaultAs: '__sfc__' },
+    { customElement: true },
+  ]) {
+    let out
+    try {
+      const r = sfcApi.compileScript(descriptor, { id: 'xxxxxxxx', sourceMap: false, ...opts })
+      out = { content: r.content }
+    } catch (e) {
+      out = { error: String(e.message || e) }
+    }
+    scriptOptOut.push({ input: source, opts, ...out })
+  }
+}
+fs.writeFileSync('tests/fixtures/compile-script-opts.json', JSON.stringify(scriptOptOut))
+console.log(`compile-script-opts: ${scriptOptOut.length}`)
+
+const styleOptOut = []
+for (const source of moduleCases) {
+  for (const opts of [
+    { modules: true, scoped: true },
+    { modules: true, isProd: true },
+    { scoped: true, isProd: true },
+  ]) {
+    let out
+    try {
+      const r = await sfcApi.compileStyleAsync({
+        source,
+        filename: '/foo/bar.vue',
+        id: 'data-v-xxxxxxxx',
+        ...opts,
+      })
+      out = r.errors.length
+        ? { error: String(r.errors[0].message || r.errors[0]) }
+        : { code: r.code, modules: r.modules ?? null }
+    } catch (e) {
+      out = { error: String(e.message || e) }
+    }
+    styleOptOut.push({ source, opts, ...out })
+  }
+}
+fs.writeFileSync('tests/fixtures/compile-style-opts.json', JSON.stringify(styleOptOut))
+console.log(`compile-style-opts: ${styleOptOut.length}`)

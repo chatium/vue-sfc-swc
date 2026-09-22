@@ -54,7 +54,7 @@ fn build_options(o: &TemplateCompileOptions) -> CompileOptions {
         opts.transform.slotted = s;
     }
     opts.transform.ssr_css_vars = if o.ssr && !o.ssr_css_vars.is_empty() {
-        gen_css_vars_from_list(&o.ssr_css_vars, &short_id, true)
+        gen_css_vars_from_list(&o.ssr_css_vars, &short_id, o.is_prod, true)
     } else {
         String::new()
     };

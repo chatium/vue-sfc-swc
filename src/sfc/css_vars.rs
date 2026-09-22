@@ -114,18 +114,47 @@ pub fn get_escaped_css_var_name(key: &str, double_escape: bool) -> String {
     out
 }
 
-pub fn gen_var_name(id: &str, raw: &str, is_ssr: bool) -> String {
+/// `hash-sum` over a string, which is what `genVarName` hashes in prod
+fn hash_sum(s: &str) -> String {
+    fn fold(hash: i64, text: &str) -> i64 {
+        if text.is_empty() {
+            return hash;
+        }
+        let mut h = hash;
+        for c in text.encode_utf16() {
+            h = (((h << 5) - h + c as i64) as i32) as i64;
+        }
+        if h < 0 { h * -2 } else { h }
+    }
+    // `foldValue(0, s, '', [])` for a string value
+    let mut h = fold(0, "");
+    h = fold(h, "[object String]");
+    h = fold(h, "string");
+    h = fold(h, s);
+    let hex = format!("{h:x}");
+    format!("{:0>8}", hex)
+}
+
+pub fn gen_var_name(id: &str, raw: &str, is_prod: bool, is_ssr: bool) -> String {
+    if is_prod {
+        // `hash(id + raw).replace(/^\d/, r => `v${r}`)`
+        let h = hash_sum(&format!("{id}{raw}"));
+        return match h.chars().next() {
+            Some(c) if c.is_ascii_digit() => format!("v{h}"),
+            _ => h,
+        };
+    }
     format!("{id}-{}", get_escaped_css_var_name(raw, is_ssr))
 }
 
-pub fn gen_css_vars_from_list(vars: &[String], id: &str, is_ssr: bool) -> String {
+pub fn gen_css_vars_from_list(vars: &[String], id: &str, is_prod: bool, is_ssr: bool) -> String {
     let body: Vec<String> = vars
         .iter()
         .map(|key| {
             format!(
                 "\"{}{}\": ({})",
                 if is_ssr { ":--" } else { "" },
-                gen_var_name(id, key, is_ssr),
+                gen_var_name(id, key, is_prod, is_ssr),
                 key
             )
         })
@@ -140,7 +169,7 @@ pub fn gen_css_vars_code(
     vars: &[String],
     bindings: &crate::core::options::BindingMetadata,
     id: &str,
-    _is_prod: bool,
+    is_prod: bool,
 ) -> String {
     use crate::core::ast::Arena;
     use crate::core::options::TransformOptions;
@@ -149,7 +178,7 @@ pub fn gen_css_vars_code(
         process_expression, stringify_expression,
     };
 
-    let vars_exp = gen_css_vars_from_list(vars, id, false);
+    let vars_exp = gen_css_vars_from_list(vars, id, is_prod, false);
     let mut arena = Arena::new();
     let root = arena.create_root(Vec::new(), String::new());
     let mut opts = TransformOptions {

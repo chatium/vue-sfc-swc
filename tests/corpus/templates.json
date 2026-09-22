@@ -620,5 +620,21 @@
  "<img srcset=\"./icons.svg#icon-star 2x\" />",
  "<img srcset=\"./foo%.png 2x\" />",
  "<A><B>{{ x.toLocaleString() }}</B></A>",
- "<A><B>{{ toString }}</B></A>"
+ "<A><B>{{ toString }}</B></A>",
+ "<Comp><template #a v-if=\"ok\">x</template></Comp>",
+ "<Comp><template #a v-if=\"ok\">x</template><template #a v-else>y</template></Comp>",
+ "<Comp><template #a v-if=\"ok\">x</template><template #b v-else-if=\"o\">y</template><template #c v-else>z</template></Comp>",
+ "<Comp><template #a=\"{ p }\" v-if=\"ok\">{{ p }}</template><template #a v-else>y</template></Comp>",
+ "<Comp><template #a v-else>y</template></Comp>",
+ "<Comp><template v-for=\"x in list\" #[x]>{{ x }}</template></Comp>",
+ "<Comp><template v-for=\"(x, i) in list\" #a=\"{ p }\">{{ x }}{{ i }}{{ p }}</template></Comp>",
+ "<Comp><template #[name]>x</template></Comp>",
+ "<Comp><template #[name]=\"{ p }\">{{ p }}</template></Comp>",
+ "<Comp><template #a>1</template><template #a>2</template></Comp>",
+ "<Comp v-slot=\"a\"><template #b>x</template></Comp>",
+ "<Comp><template #default>x</template>implicit</Comp>",
+ "<Comp><template #a>x</template>implicit</Comp>",
+ "<Comp><slot/></Comp>",
+ "<Comp><template #a><slot name=\"a\"/></template></Comp>",
+ "<div v-slot=\"a\">x</div>"
 ]

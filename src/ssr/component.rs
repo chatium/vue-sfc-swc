@@ -229,8 +229,11 @@ pub fn create_vnode_slot_branch(
         ssr_codegen_node: None,
         loc: loc_stub(),
     })));
-    sub_transform(wrapper, ctx);
-    let returns = ctx.a.children_ref(wrapper);
+    // `createReturnStatement(children)` holds the array the transforms mutate;
+    // a `v-for` wrapper becomes a ForNode that owns it, so follow the
+    // replacement rather than reading the template element's stale copy
+    let transformed = sub_transform(wrapper, ctx);
+    let returns = ctx.a.children_ref(transformed);
     ctx.a.add(Node::ReturnStatement(returns))
 }
 
@@ -252,7 +255,7 @@ const OBJECT_PROTOTYPE_MEMBERS: &[&str] = &[
 
 /// `subTransform` — the same arena and helper/asset sets, but the vnode
 /// transform preset and an isolated copy of the scope bookkeeping.
-fn sub_transform(node: NodeId, ctx: &mut TransformContext) {
+fn sub_transform(node: NodeId, ctx: &mut TransformContext) -> NodeId {
     let child_root = ctx.a.create_root(vec![node], String::new());
     let saved_node_transforms = std::mem::replace(
         &mut ctx.opts.node_transforms,
@@ -289,6 +292,7 @@ fn sub_transform(node: NodeId, ctx: &mut TransformContext) {
     ctx.grand_parent = saved_grand_parent;
     ctx.child_index = saved_index;
     ctx.current_node = saved_current;
+    ctx.a.root(child_root).children.first().copied().unwrap_or(node)
 }
 
 fn vnode_node_transforms(user: &[NodeTransformKind]) -> Vec<NodeTransformKind> {

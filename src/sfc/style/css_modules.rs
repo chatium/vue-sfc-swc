@@ -69,6 +69,8 @@ pub struct ModulesResult {
 
 pub fn apply(tree: &mut CssTree, original_css: &str) -> ModulesResult {
     let mut exports: Vec<(String, String)> = Vec::new();
+    // the scope plugin exports the selectors first and the keyframes after
+    let mut keyframe_exports: Vec<(String, String)> = Vec::new();
     let mut keyframes: Vec<(String, String)> = Vec::new();
     let mut error = None;
 
@@ -98,7 +100,7 @@ pub fn apply(tree: &mut CssTree, original_css: &str) -> ModulesResult {
                     let params = tree.get(id).params.trim().to_string();
                     if !params.is_empty() {
                         let scoped = generate_scoped_name(&params, original_css);
-                        export(&params, &scoped, &mut exports);
+                        export(&params, &scoped, &mut keyframe_exports);
                         keyframes.push((params, scoped.clone()));
                         tree.get_mut(id).params = scoped;
                         tree.get_mut(id).raws.params = None;
@@ -173,6 +175,9 @@ pub fn apply(tree: &mut CssTree, original_css: &str) -> ModulesResult {
         }
     }
 
+    for (name, scoped) in keyframe_exports {
+        export(&name, &scoped, &mut exports);
+    }
     ModulesResult { exports, error }
 }
 

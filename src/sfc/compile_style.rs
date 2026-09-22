@@ -168,7 +168,7 @@ fn css_vars_plugin(tree: &mut CssTree, id: &str, is_prod: bool) {
                 let raw: String = chars[m_end..end].iter().collect();
                 let variable = normalize_expression(&raw);
                 transformed.push_str(&chars[last_index..m_start].iter().collect::<String>());
-                transformed.push_str(&format!("var(--{})", gen_var_name(id, &variable, false)));
+                transformed.push_str(&format!("var(--{})", gen_var_name(id, &variable, is_prod, false)));
                 last_index = end + 1;
             }
         }

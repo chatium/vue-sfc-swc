@@ -165,6 +165,7 @@ fn process_rule(
             .iter()
             .any(|c| tree.get(*c).kind == CssKind::Rule),
         wrap_nested: false,
+        error: None,
     };
     let mut out: Vec<Selector> = Vec::new();
     for selector in std::mem::take(&mut root.selectors) {
@@ -176,6 +177,9 @@ fn process_rule(
         }
     }
     root.selectors = out;
+    if let Some(e) = ctx.error.take() {
+        return Err(e);
+    }
 
     if ctx.rule_is_deep {
         deep_rules.insert(rule);
@@ -202,6 +206,8 @@ struct RewriteCtx {
     rule_is_deep: bool,
     has_nested_rules: bool,
     wrap_nested: bool,
+    /// the selector could not be rewritten; the JS plugin throws here
+    error: Option<String>,
 }
 
 fn is_space_combinator(n: &SelNode) -> bool {
@@ -343,7 +349,14 @@ fn rewrite_selector(
             }
 
             if value == ":global" || value == "::v-global" {
-                let inner = selector.nodes[i].nodes[0].clone();
+                // `selectorRoot.insertAfter(selector, n.nodes[0])` throws when
+                // the pseudo has no argument, as in a bare `:global .a`
+                let Some(inner) = selector.nodes[i].nodes.first().cloned() else {
+                    ctx.error = Some(
+                        "Cannot set properties of undefined (setting 'parent')".to_string(),
+                    );
+                    return None;
+                };
                 *selector = inner;
                 return None;
             }

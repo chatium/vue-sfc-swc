@@ -535,6 +535,166 @@ fn css_module_value_import_is_rejected() {
     );
 }
 
+/// The options the other corpora keep fixed: `isProd`, `slotted`,
+/// `genDefaultAs`, `customElement`, and `modules` together with `scoped`.
+#[test]
+fn compile_template_opts() {
+    let cases = load("compile-template-opts");
+    let mut failed: Vec<(String, String)> = Vec::new();
+    for case in &cases {
+        let input = case["input"].as_str().unwrap();
+        let o = &case["opts"];
+        let flag = |k: &str| o.get(k).and_then(|v| v.as_bool()).unwrap_or(false);
+        let want = case["code"].as_str().unwrap();
+        let r = std::panic::catch_unwind(|| {
+            vue_sfc::sfc::compile_template::compile_template(
+                input,
+                vue_sfc::sfc::compile_template::TemplateCompileOptions {
+                    filename: "anonymous.vue".to_string(),
+                    id: "someid".to_string(),
+                    scoped: flag("scoped"),
+                    is_prod: flag("isProd"),
+                    ssr: flag("ssr"),
+                    slotted: o.get("slotted").and_then(|v| v.as_bool()),
+                    ..Default::default()
+                },
+            )
+        });
+        match r {
+            Ok(r) if r.code == want => {}
+            Ok(r) => failed.push((
+                format!("{input:?} {o}"),
+                format!("got:\n{}\nwant:\n{want}", r.code),
+            )),
+            Err(p) => {
+                let m = p
+                    .downcast_ref::<String>()
+                    .cloned()
+                    .or_else(|| p.downcast_ref::<&str>().map(|s| s.to_string()))
+                    .unwrap_or_default();
+                failed.push((format!("{input:?} {o}"), format!("panic: {m}")));
+            }
+        }
+    }
+    report("compile-template-opts", cases.len(), failed);
+}
+
+#[test]
+fn compile_script_opts() {
+    let cases = load("compile-script-opts");
+    let mut failed: Vec<(String, String)> = Vec::new();
+    for case in &cases {
+        let input = case["input"].as_str().unwrap();
+        let o = &case["opts"];
+        let flag = |k: &str| o.get(k).and_then(|v| v.as_bool()).unwrap_or(false);
+        let want_error = case.get("error").is_some();
+        let r = std::panic::catch_unwind(|| {
+            let parsed = vue_sfc::sfc::parse::parse(
+                input,
+                vue_sfc::sfc::parse::SfcParseOptions {
+                    source_map: false,
+                    ..Default::default()
+                },
+            );
+            vue_sfc::sfc::compile_script::compile_script(
+                &parsed.descriptor,
+                &parsed.arena,
+                vue_sfc::sfc::script::context::ScriptCompileOptions {
+                    id: "xxxxxxxx".to_string(),
+                    is_prod: flag("isProd"),
+                    inline_template: flag("inlineTemplate"),
+                    custom_element: flag("customElement"),
+                    gen_default_as: o
+                        .get("genDefaultAs")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
+                    ..Default::default()
+                },
+            )
+        });
+        match r {
+            Ok(Ok(_)) if want_error => {
+                failed.push((format!("{input:?} {o}"), "expected an error".into()))
+            }
+            Ok(Ok(r)) => {
+                let want = case["content"].as_str().unwrap();
+                if r.content != want {
+                    failed.push((
+                        format!("{input:?} {o}"),
+                        format!("got:\n{}\n---want:\n{want}", r.content),
+                    ));
+                }
+            }
+            Ok(Err(_)) if want_error => {}
+            Ok(Err(e)) => {
+                failed.push((format!("{input:?} {o}"), format!("unexpected error: {e}")))
+            }
+            Err(p) => {
+                let m = p
+                    .downcast_ref::<String>()
+                    .cloned()
+                    .or_else(|| p.downcast_ref::<&str>().map(|s| s.to_string()))
+                    .unwrap_or_default();
+                failed.push((format!("{input:?} {o}"), format!("panic: {m}")));
+            }
+        }
+    }
+    report("compile-script-opts", cases.len(), failed);
+}
+
+#[test]
+fn compile_style_opts() {
+    let cases = load("compile-style-opts");
+    let mut failed: Vec<(String, String)> = Vec::new();
+    for case in &cases {
+        let source = case["source"].as_str().unwrap();
+        let o = &case["opts"];
+        let flag = |k: &str| o.get(k).and_then(|v| v.as_bool()).unwrap_or(false);
+        let r = vue_sfc::sfc::compile_style::compile_style(
+            vue_sfc::sfc::compile_style::StyleCompileOptions {
+                source: source.to_string(),
+                filename: "/foo/bar.vue".to_string(),
+                id: "data-v-xxxxxxxx".to_string(),
+                scoped: flag("scoped"),
+                modules: flag("modules"),
+                is_prod: flag("isProd"),
+                ..Default::default()
+            },
+        );
+        let want_error = case.get("error").is_some();
+        if !r.errors.is_empty() != want_error {
+            failed.push((
+                format!("{source:?} {o}"),
+                format!("errors: {:?}", r.errors.iter().map(|e| &e.msg).collect::<Vec<_>>()),
+            ));
+            continue;
+        }
+        if want_error {
+            continue;
+        }
+        if r.code != case["code"].as_str().unwrap() {
+            failed.push((
+                format!("{source:?} {o}"),
+                format!("got  {:?}\nwant {:?}", r.code, case["code"]),
+            ));
+            continue;
+        }
+        let want_modules = case["modules"].as_object().map(|m| {
+            m.iter()
+                .map(|(k, v)| (k.clone(), v.as_str().unwrap_or("").to_string()))
+                .collect::<Vec<_>>()
+        });
+        let got_modules = r.modules.clone();
+        if got_modules != want_modules {
+            failed.push((
+                format!("{source:?} {o}"),
+                format!("modules got {got_modules:?} want {want_modules:?}"),
+            ));
+        }
+    }
+    report("compile-style-opts", cases.len(), failed);
+}
+
 #[test]
 fn postcss_roundtrip() {
     let cases = load("postcss-roundtrip");
