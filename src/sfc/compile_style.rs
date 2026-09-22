@@ -20,8 +20,39 @@ pub struct StyleCompileOptions {
 #[derive(Debug, Default)]
 pub struct StyleCompileResult {
     pub code: String,
-    pub errors: Vec<String>,
+    pub errors: Vec<StyleError>,
     pub modules: Option<Vec<(String, String)>>,
+}
+
+/// A postcss `CssSyntaxError` carries a position; the preprocessor and
+/// plugin errors are plain messages.
+#[derive(Debug, Clone)]
+pub struct StyleError {
+    pub msg: String,
+    /// 1-based line and column, as postcss reports them
+    pub position: Option<(usize, usize)>,
+}
+
+impl StyleError {
+    fn plain(msg: impl Into<String>) -> Self {
+        StyleError {
+            msg: msg.into(),
+            position: None,
+        }
+    }
+
+    /// `CssSyntaxError#message`: `<resolved file>:<line>:<column>: <reason>`
+    fn syntax(e: &super::style::postcss::parse::CssSyntaxError, css: &str, filename: &str) -> Self {
+        let (line, column) = e.line_col(css);
+        let file = std::env::current_dir()
+            .map(|d| d.join(filename))
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_else(|_| filename.to_string());
+        StyleError {
+            msg: format!("{file}:{line}:{column}: {}", e.reason),
+            position: Some((line, column)),
+        }
+    }
 }
 
 pub fn compile_style(options: StyleCompileOptions) -> StyleCompileResult {
@@ -44,7 +75,7 @@ pub fn compile_style(options: StyleCompileOptions) -> StyleCompileResult {
             Err(e) => {
                 return StyleCompileResult {
                     code: String::new(),
-                    errors: vec![e],
+                    errors: vec![StyleError::plain(e)],
                     modules: None,
                 };
             }
@@ -55,7 +86,7 @@ pub fn compile_style(options: StyleCompileOptions) -> StyleCompileResult {
     let mut tree = match parse(&source) {
         Ok(t) => t,
         Err(e) => {
-            errors.push(e);
+            errors.push(StyleError::syntax(&e, &source, &options.filename));
             return StyleCompileResult {
                 code: String::new(),
                 errors,
@@ -76,7 +107,7 @@ pub fn compile_style(options: StyleCompileOptions) -> StyleCompileResult {
     if options.modules {
         let r = super::style::css_modules::apply(&mut tree, &source);
         if let Some(e) = r.error {
-            errors.push(e);
+            errors.push(StyleError::plain(e));
             return StyleCompileResult {
                 code: String::new(),
                 errors,

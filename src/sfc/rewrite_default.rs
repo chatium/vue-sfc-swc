@@ -5,9 +5,16 @@ use swc_core::ecma::ast::*;
 
 use super::magic_string::MagicString;
 
-/// The JS version lets Babel's parse error escape to the caller.
+/// The JS version lets Babel's parse error escape to the caller, with the
+/// `(line:column)` Babel appends to its messages.
 pub fn rewrite_default(input: &str, as_: &str, ts: bool) -> Result<String, String> {
-    let program = crate::core::jsparse::parse_module(input, ts)?;
+    let program =
+        crate::core::jsparse::parse_module_with_pos(input, ts).map_err(|(msg, pos)| {
+            let head = &input[..pos.min(input.len())];
+            let line = head.matches('\n').count() + 1;
+            let col = head.rsplit('\n').next().unwrap_or("").chars().count();
+            format!("{msg} ({line}:{col})")
+        })?;
     let mut s = MagicString::new(input);
     rewrite_default_ast(&program.body, &mut s, as_);
     Ok(s.to_string())

@@ -9,7 +9,7 @@ pub struct Parser {
     current: usize,
     spaces: String,
     semicolon: bool,
-    pub error: Option<String>,
+    pub error: Option<CssSyntaxError>,
 }
 
 fn is_space_or_comment(kind: &str) -> bool {
@@ -33,7 +33,7 @@ impl Parser {
         }
     }
 
-    pub fn parse(mut self) -> Result<CssTree, String> {
+    pub fn parse(mut self) -> Result<CssTree, CssSyntaxError> {
         while !self.tokenizer.end_of_file() {
             let token = match self.tokenizer.next_token() {
                 Some(t) => t,
@@ -103,7 +103,7 @@ impl Parser {
         self.current = id;
     }
 
-    fn end(&mut self, _token: &Token) {
+    fn end(&mut self, token: &Token) {
         let has_nodes = self
             .tree
             .get(self.current)
@@ -126,13 +126,14 @@ impl Parser {
         self.tree.get_mut(self.current).raws.after = Some(format!("{after}{spaces}"));
         match self.tree.get(self.current).parent {
             Some(p) => self.current = p,
-            None => self.error = Some("Unexpected }".into()),
+            None => self.error = Some(CssSyntaxError::new("Unexpected }", token.start.unwrap_or(0))),
         }
     }
 
     fn end_file(&mut self) {
         if self.tree.get(self.current).parent.is_some() {
-            self.error = Some("Unclosed block".into());
+            let start = self.tree.get(self.current).start;
+            self.error = Some(CssSyntaxError::new("Unclosed block", start));
         }
         let has_nodes = self
             .tree
@@ -172,7 +173,10 @@ impl Parser {
         let mut node = CssNode::new(CssKind::AtRule);
         node.name = token.value.chars().skip(1).collect();
         if node.name.is_empty() {
-            self.error = Some("At-rule without name".into());
+            self.error = Some(CssSyntaxError::new(
+                "At-rule without name",
+                token.start.unwrap_or(0),
+            ));
         }
         let id = self.tree.add(node);
         self.init(id, token.start.unwrap_or(0));
@@ -244,6 +248,8 @@ impl Parser {
         let mut end = false;
         let mut colon = false;
         let mut brackets: Vec<String> = Vec::new();
+        // `unclosedBracket` reports the first open bracket
+        let mut bracket: Option<Token> = None;
         let custom_property = start.value.starts_with("--");
         let mut tokens: Vec<Token> = Vec::new();
         let mut token = Some(start);
@@ -253,6 +259,9 @@ impl Parser {
             tokens.push(t);
 
             if ty == "(" || ty == "[" {
+                if bracket.is_none() {
+                    bracket = tokens.last().cloned();
+                }
                 brackets.push(if ty == "(" { ")".into() } else { "]".into() });
             } else if custom_property && colon && ty == "{" {
                 brackets.push("}".into());
@@ -286,7 +295,10 @@ impl Parser {
             end = true;
         }
         if !brackets.is_empty() {
-            self.error = Some("Unclosed bracket".into());
+            self.error = Some(CssSyntaxError::new(
+                "Unclosed bracket",
+                bracket.and_then(|b| b.start).unwrap_or(0),
+            ));
             return;
         }
 
@@ -303,7 +315,10 @@ impl Parser {
             }
             self.decl(tokens, custom_property);
         } else {
-            self.error = Some(format!("Unknown word {}", tokens[0].value));
+            self.error = Some(CssSyntaxError::new(
+                format!("Unknown word {}", tokens[0].value),
+                tokens[0].start.unwrap_or(0),
+            ));
         }
     }
 
@@ -334,7 +349,10 @@ impl Parser {
         let mut start = 0usize;
         while tokens[start].kind != "word" {
             if start == tokens.len() - 1 {
-                self.error = Some(format!("Unknown word {}", tokens[start].value));
+                self.error = Some(CssSyntaxError::new(
+                    format!("Unknown word {}", tokens[start].value),
+                    tokens[start].start.unwrap_or(0),
+                ));
                 return;
             }
             start += 1;
@@ -361,7 +379,10 @@ impl Parser {
                 break;
             }
             if t.kind == "word" && t.value.chars().any(|c| c.is_alphanumeric() || c == '_') {
-                self.error = Some(format!("Unknown word {}", t.value));
+                self.error = Some(CssSyntaxError::new(
+                    format!("Unknown word {}", t.value),
+                    t.start.unwrap_or(0),
+                ));
                 return;
             }
         }
@@ -531,6 +552,46 @@ fn string_from(tokens: &mut Vec<Token>, from: usize) -> String {
     result
 }
 
-pub fn parse(css: &str) -> Result<CssTree, String> {
+pub fn parse(css: &str) -> Result<CssTree, CssSyntaxError> {
     Parser::new(css).parse()
+}
+
+/// postcss's `CssSyntaxError`, carrying the offset it was raised at.
+#[derive(Debug, Clone)]
+pub struct CssSyntaxError {
+    pub reason: String,
+    /// UTF-16 offset into the stylesheet
+    pub offset: usize,
+}
+
+impl std::fmt::Display for CssSyntaxError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.reason)
+    }
+}
+
+impl CssSyntaxError {
+    pub fn new(reason: impl Into<String>, offset: usize) -> Self {
+        CssSyntaxError {
+            reason: reason.into(),
+            offset,
+        }
+    }
+
+    /// 1-based line and column, as `Input#fromOffset` computes them
+    pub fn line_col(&self, css: &str) -> (usize, usize) {
+        let units: Vec<u16> = css.encode_utf16().collect();
+        let end = self.offset.min(units.len());
+        let mut line = 1usize;
+        let mut col = 1usize;
+        for u in &units[..end] {
+            if *u == 10 {
+                line += 1;
+                col = 1;
+            } else {
+                col += 1;
+            }
+        }
+        (line, col)
+    }
 }

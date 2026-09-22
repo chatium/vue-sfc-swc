@@ -113,7 +113,7 @@ pub struct Tokenizer {
     buffer: Vec<Token>,
     returned: Vec<Token>,
     last_bad_paren: i64,
-    pub error: Option<String>,
+    pub error: Option<super::parse::CssSyntaxError>,
 }
 
 impl Tokenizer {
@@ -226,7 +226,7 @@ impl Tokenizer {
                         let mut escaped = false;
                         next = self.index_of(CLOSE_PARENTHESES, (next + 1) as usize);
                         if next == -1 {
-                            self.error = Some("Unclosed bracket".into());
+                            self.error = Some(super::parse::CssSyntaxError::new("Unclosed bracket", self.pos));
                             next = self.pos as i64;
                             break;
                         }
@@ -285,7 +285,7 @@ impl Tokenizer {
                     let mut escaped = false;
                     next = self.index_of(quote, (next + 1) as usize);
                     if next == -1 {
-                        self.error = Some("Unclosed string".into());
+                        self.error = Some(super::parse::CssSyntaxError::new("Unclosed string", self.pos));
                         next = self.pos as i64 + 1;
                         break;
                     }
@@ -360,7 +360,7 @@ impl Tokenizer {
                 if code == SLASH && self.css.get(self.pos + 1) == Some(&ASTERISK) {
                     let mut next = self.index_of_comment_end(self.pos + 2) + 1;
                     if next == 0 {
-                        self.error = Some("Unclosed comment".into());
+                        self.error = Some(super::parse::CssSyntaxError::new("Unclosed comment", self.pos));
                         next = length as i64;
                     }
                     current_token = Token {

@@ -178,8 +178,12 @@ pub fn compile_vue(source: &str, path: &str) -> Result<VueOutput, VueFailure> {
             ..Default::default()
         });
         all_errors.extend(r.errors.iter().map(|e| VueError {
-            msg: e.clone(),
-            position: None,
+            msg: e.msg.clone(),
+            // `vueErrors` reads postcss's 1-based line/column
+            position: e.position.map(|(line, column)| VuePosition {
+                line: line as i64 - 1,
+                character: column as i64 - 1,
+            }),
         }));
         if let (Some(m), Some(module)) = (r.modules, style.module.as_ref()) {
             let name = match module {
