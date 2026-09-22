@@ -96,15 +96,19 @@ successful compile is byte-identical, and the 17 remaining cases are invalid inp
 diagnostic's wording differs (that corpus is not fixed, so `ugc_vue_local` reports those rather
 than failing on them).
 
-Seven public Vue codebases, checked the same way — 2646 of 2647 distinct SFCs:
+Eleven public Vue codebases, checked the same way — 8761 of 8763 distinct SFCs:
 
 | repo | files | result |
 | --- | --- | --- |
-| [elk-zone/elk](https://github.com/elk-zone/elk) | 264 | 264 |
+| [unovue/shadcn-vue](https://github.com/unovue/shadcn-vue) | 4380 | 4380 |
 | [vuetifyjs/vuetify](https://github.com/vuetifyjs/vuetify) | 1264 | 1263 |
-| [youzan/vant](https://github.com/youzan/vant) | 128 | 128 |
+| [element-plus/element-plus](https://github.com/element-plus/element-plus) | 816 | 816 |
+| [nuxt/ui](https://github.com/nuxt/ui) | 790 | 790 |
 | [vbenjs/vue-vben-admin](https://github.com/vbenjs/vue-vben-admin) | 574 | 574 |
+| [elk-zone/elk](https://github.com/elk-zone/elk) | 264 | 264 |
 | [varletjs/varlet](https://github.com/varletjs/varlet) | 220 | 220 |
+| [PanJiaChen/vue-element-admin](https://github.com/PanJiaChen/vue-element-admin) | 131 | 130 |
+| [youzan/vant](https://github.com/youzan/vant) | 128 | 128 |
 | [slidevjs/slidev](https://github.com/slidevjs/slidev) | 125 | 125 |
 | [vuejs/vitepress](https://github.com/vuejs/vitepress) | 71 | 71 |
 
@@ -117,8 +121,9 @@ cargo test --test conformance ugc_vue_local  # or: cargo run --example triage --
 `examples/triage.rs` replays such a corpus and groups the divergences by kind,
 which is the quicker way in when a fresh tree turns some up.
 
-The one miss is `lang="sass"`: dart-sass drops blank lines inside an unknown
-at-rule's prelude where `grass` keeps them.
+Both misses are `lang="sass"`/`scss` and are `grass` disagreeing with
+dart-sass, not with this port: dart-sass drops blank lines inside an unknown
+at-rule's prelude, and re-indents a multi-line comment's continuation lines.
 
 ## Known divergences
 

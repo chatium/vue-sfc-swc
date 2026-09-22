@@ -94,6 +94,10 @@ pub struct ScriptCompileContext {
     pub descriptor: SfcDescriptor,
     /// local type declarations available to `resolveType`
     pub type_decls: HashMap<String, TypeDecl>,
+    /// `_ownerScope`: which block each declaration's spans belong to
+    pub type_decl_in_setup: HashMap<String, bool>,
+    /// the block the type currently being resolved came from
+    pub current_type_in_setup: bool,
     pub errors: Vec<String>,
     /// `inferRuntimeType` tolerates an unresolvable `extends`
     pub silent_on_extends_failure: bool,
@@ -218,6 +222,8 @@ impl ScriptCompileContext {
             options,
             descriptor: descriptor.clone(),
             type_decls: HashMap::new(),
+            type_decl_in_setup: HashMap::new(),
+            current_type_in_setup: true,
             errors: Vec::new(),
             silent_on_extends_failure: false,
             warnings: Vec::new(),

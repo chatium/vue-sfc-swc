@@ -59,7 +59,11 @@ pub fn to_runtime_type_string(types: &[String]) -> String {
     if types.len() > 1 {
         format!("[{}]", types.join(", "))
     } else {
-        types.first().cloned().unwrap_or_default()
+        // `types[0]` on an empty list is JS `undefined`
+        types
+            .first()
+            .cloned()
+            .unwrap_or_else(|| "undefined".to_string())
     }
 }
 

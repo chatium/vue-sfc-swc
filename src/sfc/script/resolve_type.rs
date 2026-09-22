@@ -57,6 +57,25 @@ pub fn resolve_type_elements(
     ctx: &mut ScriptCompileContext,
     node: &TsType,
 ) -> Result<ResolvedElements, String> {
+    // `/* @vue-ignore */` before a type drops it; on a union or an
+    // intersection the comment belongs to its first member, so only that one
+    // is dropped
+    if has_vue_ignore(ctx, node.span().lo.0 as usize) {
+        if let TsType::TsUnionOrIntersectionType(u) = node {
+            let (types, is_union) = match u {
+                TsUnionOrIntersectionType::TsUnionType(t) => (&t.types, true),
+                TsUnionOrIntersectionType::TsIntersectionType(t) => (&t.types, false),
+            };
+            if types.len() > 1 {
+                let mut maps = vec![ResolvedElements::default()];
+                for t in &types[1..] {
+                    maps.push(resolve_type_elements(ctx, t)?);
+                }
+                return Ok(merge_elements(maps, is_union));
+            }
+        }
+        return Ok(ResolvedElements::default());
+    }
     match node {
         TsType::TsTypeLit(lit) => type_elements_to_map(ctx, &lit.members),
         TsType::TsParenthesizedType(p) => resolve_type_elements(ctx, &p.type_ann),
@@ -87,7 +106,7 @@ fn unresolvable(ctx: &ScriptCompileContext, span: swc_core::common::Span) -> Str
     ctx.error_at(
         "Unresolvable type reference or unsupported built-in utility type",
         (span.lo.0 as usize, span.hi.0 as usize),
-        true,
+        ctx.current_type_in_setup,
     )
 }
 
@@ -116,11 +135,18 @@ fn resolve_type_ref(
         return Err(e);
     }
     if let Some(decl) = ctx.type_decls.get(&name).cloned() {
-        return match decl {
+        // the declaration's spans belong to its own block
+        let saved = std::mem::replace(
+            &mut ctx.current_type_in_setup,
+            ctx.type_decl_in_setup.get(&name).copied().unwrap_or(true),
+        );
+        let r = match decl {
             TypeDecl::Interface(i) => resolve_interface_members(ctx, &i),
             TypeDecl::Alias(a) => resolve_type_elements(ctx, &a.type_ann),
             TypeDecl::Enum(e) => Err(unresolvable(ctx, e.span)),
         };
+        ctx.current_type_in_setup = saved;
+        return r;
     }
 
     // built-in utility types
@@ -146,13 +172,15 @@ fn resolve_type_ref(
         "Pick" if params.len() >= 2 => {
             let resolved = resolve_type_elements(ctx, &params[0])?;
             let picked = resolve_string_type(ctx, &params[1]);
+            // the result follows the picked keys, not the source's order
             Ok(ResolvedElements {
-                props: resolved
-                    .props
+                props: picked
                     .into_iter()
-                    .filter(|(k, _)| picked.contains(k))
+                    .filter_map(|k| {
+                        resolved.props.iter().find(|(pk, _)| *pk == k).cloned()
+                    })
                     .collect(),
-                calls: Vec::new(),
+                calls: resolved.calls,
             })
         }
         "Omit" if params.len() >= 2 => {
@@ -164,10 +192,68 @@ fn resolve_type_ref(
                     .into_iter()
                     .filter(|(k, _)| !omitted.contains(k))
                     .collect(),
-                calls: Vec::new(),
+                calls: resolved.calls,
             })
         }
         _ => Err(unresolvable(ctx, r.span)),
+    }
+}
+
+/// `resolveIndexType`: the member types a `T[K]` stands for
+fn resolve_index_type(
+    ctx: &mut ScriptCompileContext,
+    node: &TsIndexedAccessType,
+) -> Vec<Box<TsType>> {
+    if matches!(
+        &*node.index_type,
+        TsType::TsKeywordType(k) if k.kind == TsKeywordTypeKind::TsNumberKeyword
+    ) {
+        return resolve_array_element_type(ctx, &node.obj_type);
+    }
+    let is_string_index = matches!(
+        &*node.index_type,
+        TsType::TsKeywordType(k) if k.kind == TsKeywordTypeKind::TsStringKeyword
+    );
+    let resolved = match resolve_type_elements(ctx, &node.obj_type) {
+        Ok(r) => r,
+        Err(_) => return Vec::new(),
+    };
+    let keys: Vec<String> = if is_string_index {
+        resolved.props.iter().map(|(k, _)| k.clone()).collect()
+    } else {
+        resolve_string_type(ctx, &node.index_type)
+    };
+    let mut types = Vec::new();
+    for key in keys {
+        if let Some((_, p)) = resolved.props.iter().find(|(k, _)| *k == key) {
+            types.extend(p.types.iter().flatten().cloned());
+        }
+    }
+    types
+}
+
+/// `resolveArrayElementType`
+fn resolve_array_element_type(
+    ctx: &mut ScriptCompileContext,
+    node: &TsType,
+) -> Vec<Box<TsType>> {
+    match node {
+        TsType::TsArrayType(a) => vec![a.elem_type.clone()],
+        TsType::TsTupleType(t) => t.elem_types.iter().map(|e| e.ty.clone()).collect(),
+        TsType::TsTypeRef(r) => {
+            if type_ref_name(r).as_deref() == Some("Array") {
+                r.type_params
+                    .as_ref()
+                    .map(|p| p.params.clone())
+                    .unwrap_or_default()
+            } else {
+                match type_ref_name(r).and_then(|n| ctx.type_decls.get(&n).cloned()) {
+                    Some(TypeDecl::Alias(a)) => resolve_array_element_type(ctx, &a.type_ann),
+                    _ => Vec::new(),
+                }
+            }
+        }
+        _ => Vec::new(),
     }
 }
 
@@ -209,7 +295,7 @@ fn imported_type_error(
         "No fs option provided to `compileScript` in non-Node environment. \
          File system access is required for resolving imported types.",
         span,
-        true,
+        ctx.current_type_in_setup,
     ))
 }
 
@@ -244,7 +330,7 @@ fn resolve_interface_members(
                      \nNote: both in 3.2 or with the ignore, the properties in the base type \
                      are treated as fallthrough attrs at runtime.",
                     span,
-                    true,
+                    ctx.current_type_in_setup,
                 ));
             }
         }
@@ -273,7 +359,7 @@ fn resolve_extends(
 
 /// `hasVueIgnore`: the comment immediately before the node
 fn has_vue_ignore(ctx: &ScriptCompileContext, start: usize) -> bool {
-    let head = ctx.get_string(0, start, true);
+    let head = ctx.get_string(0, start, ctx.current_type_in_setup);
     let head = head.trim_end();
     let Some(body) = head.strip_suffix("*/") else {
         return false;
@@ -399,9 +485,8 @@ pub fn infer_runtime_type_of_prop(ctx: &mut ScriptCompileContext, prop: &PropSig
             }
         }
     }
-    if types.is_empty() {
-        types.push(UNKNOWN_TYPE.to_string());
-    }
+    // an intersection whose members all infer to nothing stays empty, which
+    // `toRuntimeTypeString` renders as `undefined`
     types
 }
 
@@ -457,6 +542,15 @@ fn infer_runtime_type_inner(ctx: &mut ScriptCompileContext, node: &TsType) -> Ve
                 .collect(),
         },
         TsType::TsTypeRef(r) => infer_type_ref(ctx, r),
+        TsType::TsTypeOperator(o) => infer_runtime_type_inner(ctx, &o.type_ann),
+        TsType::TsIndexedAccessType(i) => {
+            let types = resolve_index_type(ctx, i);
+            if types.is_empty() {
+                vec![UNKNOWN_TYPE.into()]
+            } else {
+                flatten_types(ctx, &types)
+            }
+        }
         _ => vec![UNKNOWN_TYPE.into()],
     }
 }
@@ -467,7 +561,11 @@ fn infer_type_ref(ctx: &mut ScriptCompileContext, r: &TsTypeRef) -> Vec<String> 
         None => return vec![UNKNOWN_TYPE.into()],
     };
     if let Some(decl) = ctx.type_decls.get(&name).cloned() {
-        return match decl {
+        let saved = std::mem::replace(
+            &mut ctx.current_type_in_setup,
+            ctx.type_decl_in_setup.get(&name).copied().unwrap_or(true),
+        );
+        let r = match decl {
             TypeDecl::Alias(a) => {
                 if matches!(
                     &*a.type_ann,
@@ -498,6 +596,8 @@ fn infer_type_ref(ctx: &mut ScriptCompileContext, r: &TsTypeRef) -> Vec<String> 
             }
             TypeDecl::Enum(_) => vec![UNKNOWN_TYPE.into()],
         };
+        ctx.current_type_in_setup = saved;
+        return r;
     }
     let params: Vec<Box<TsType>> = r
         .type_params
@@ -561,9 +661,12 @@ fn flatten_types(ctx: &mut ScriptCompileContext, types: &[Box<TsType>]) -> Vec<S
 /// collects the local type declarations a macro's type argument may reference
 pub fn collect_type_decls(ctx: &mut ScriptCompileContext) {
     let mut decls = Vec::new();
-    for module in [ctx.script_ast.as_ref(), ctx.script_setup_ast.as_ref()]
-        .into_iter()
-        .flatten()
+    for (from_setup, module) in [
+        (false, ctx.script_ast.as_ref()),
+        (true, ctx.script_setup_ast.as_ref()),
+    ]
+    .into_iter()
+    .filter_map(|(f, m)| m.map(|m| (f, m)))
     {
         for item in &module.body {
             let decl = match item {
@@ -573,19 +676,20 @@ pub fn collect_type_decls(ctx: &mut ScriptCompileContext) {
             };
             match decl {
                 Some(Decl::TsInterface(i)) => {
-                    decls.push((i.id.sym.to_string(), TypeDecl::Interface(i.clone())))
+                    decls.push((i.id.sym.to_string(), from_setup, TypeDecl::Interface(i.clone())))
                 }
                 Some(Decl::TsTypeAlias(a)) => {
-                    decls.push((a.id.sym.to_string(), TypeDecl::Alias(a.clone())))
+                    decls.push((a.id.sym.to_string(), from_setup, TypeDecl::Alias(a.clone())))
                 }
                 Some(Decl::TsEnum(e)) => {
-                    decls.push((e.id.sym.to_string(), TypeDecl::Enum(e.clone())))
+                    decls.push((e.id.sym.to_string(), from_setup, TypeDecl::Enum(e.clone())))
                 }
                 _ => {}
             }
         }
     }
-    for (k, v) in decls {
+    for (k, from_setup, v) in decls {
+        ctx.type_decl_in_setup.insert(k.clone(), from_setup);
         ctx.type_decls.insert(k, v);
     }
 }

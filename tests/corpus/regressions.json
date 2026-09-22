@@ -21,5 +21,13 @@
  "<script lang=\"uppercase-rocks\">\nhello,\nworld!\n</script>",
  "<template><div class=\"x\"/></template>\n<style lang=\"less\" scoped>\n// a less line comment\n.x {\n  color: red;\n}\n</style>",
  "<template><i :t=\"new Date(x).toLocaleString()\"/></template>\n<script setup>\nimport { x } from 'x'\n</script>",
- "<template><div/></template>\n<style lang=\"less\" scoped>\n.a {\n  margin: 0;\n}\n.b {\n  padding: 0;\n  li {\n    border: 0;\n    &:first-child {\n    }\n  }\n}\n</style>"
+ "<template><div/></template>\n<style lang=\"less\" scoped>\n.a {\n  margin: 0;\n}\n.b {\n  padding: 0;\n  li {\n    border: 0;\n    &:first-child {\n    }\n  }\n}\n</style>",
+ "<script lang=\"ts\">\nexport interface Props extends /** @vue-ignore */ Base {\n  a: string\n}\n</script>\n<script setup lang=\"ts\">\ndefineProps<Props>()\n</script>",
+ "<script setup lang=\"ts\">\ninterface Base {\n  a: string\n  b: number\n  c: boolean\n}\ndefineProps<Pick<Base, 'c' | 'a'>>()\n</script>",
+ "<script setup lang=\"ts\">\ndefineProps<{ items?: readonly string[] }>()\n</script>",
+ "<script setup lang=\"ts\">\ninterface A { slots: number }\ninterface B { ui: string }\ndefineProps<{ ui?: A['slots'] & B['ui'] }>()\n</script>",
+ "<script setup lang=\"ts\">\nimport type { AccordionProps } from './A'\ntype P = Other<'x'>\ninterface Props {\n  ui?: P['slots'] & AccordionProps['ui']\n}\ndefineProps<Props>()\n</script>",
+ "<script setup lang=\"ts\">\nimport type { H } from './h'\ntype Props = {\n  a: string\n} & /** @vue-ignore */ Omit<H, 'name'>\ndefineProps<Props>()\n</script>",
+ "<script setup lang=\"ts\">\nimport type { H } from './h'\ndefineProps</** @vue-ignore */ H & { a: string }>()\n</script>",
+ "<script setup lang=\"ts\">\nasync function f(a: string): Promise<void>\nasync function f(a: number): Promise<void>\nasync function f(a: any): Promise<void> {\n  return a\n}\n</script>"
 ]

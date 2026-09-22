@@ -790,16 +790,18 @@ pub fn compile_script(
 
         // move type declarations to outer scope
         if ctx.is_ts {
+            // `node.type.startsWith('TS')`, minus enums: a bodyless function
+            // is Babel's `TSDeclareFunction` — an overload or a `declare`
+            let is_ts_decl = |d: &Decl| match d {
+                Decl::TsInterface(_) | Decl::TsTypeAlias(_) | Decl::TsModule(_) => true,
+                Decl::Fn(f) => f.function.body.is_none(),
+                _ => false,
+            };
             let is_type_decl = match item {
-                ModuleItem::Stmt(Stmt::Decl(Decl::TsInterface(_)))
-                | ModuleItem::Stmt(Stmt::Decl(Decl::TsTypeAlias(_)))
-                | ModuleItem::Stmt(Stmt::Decl(Decl::TsModule(_))) => true,
-                ModuleItem::ModuleDecl(ModuleDecl::ExportNamed(n)) => n.type_only,
-                ModuleItem::ModuleDecl(ModuleDecl::ExportDecl(e)) => matches!(
-                    &e.decl,
-                    Decl::TsInterface(_) | Decl::TsTypeAlias(_) | Decl::TsModule(_)
-                ),
                 ModuleItem::Stmt(Stmt::Decl(Decl::Var(v))) => v.declare,
+                ModuleItem::Stmt(Stmt::Decl(d)) => is_ts_decl(d),
+                ModuleItem::ModuleDecl(ModuleDecl::ExportNamed(n)) => n.type_only,
+                ModuleItem::ModuleDecl(ModuleDecl::ExportDecl(e)) => is_ts_decl(&e.decl),
                 _ => false,
             };
             if is_type_decl {
