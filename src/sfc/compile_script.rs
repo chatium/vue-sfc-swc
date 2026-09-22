@@ -439,6 +439,7 @@ pub fn compile_script(
                         is_type,
                         false,
                         &template_used_ids,
+                        !options.inline_template,
                     );
                 }
             }
@@ -494,6 +495,7 @@ pub fn compile_script(
                     is_type,
                     true,
                     &template_used_ids,
+                    !options.inline_template,
                 );
             }
             if remove_this {
@@ -1232,8 +1234,11 @@ fn register_user_import(
     is_type: bool,
     is_from_setup: bool,
     template_used_ids: &Option<HashSet<String>>,
+    need_template_usage_check: bool,
 ) {
-    let mut is_used_in_template = template_used_ids.is_some();
+    // an import counts as used unless a TS template says otherwise; with no
+    // usable template there is nothing to narrow it down
+    let mut is_used_in_template = need_template_usage_check;
     if let Some(ids) = template_used_ids {
         if ctx.is_ts {
             is_used_in_template = ids.contains(&local);

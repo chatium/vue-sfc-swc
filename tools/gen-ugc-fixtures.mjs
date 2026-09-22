@@ -7,11 +7,13 @@ const sources = [
   ...JSON.parse(fs.readFileSync('tests/corpus/sfc.json', 'utf8')),
   ...JSON.parse(fs.readFileSync('tests/corpus/sfc-extra.json', 'utf8')),
   ...JSON.parse(fs.readFileSync('tests/corpus/ugc-vue.json', 'utf8')),
+  ...JSON.parse(fs.readFileSync('tests/corpus/regressions.json', 'utf8')),
 ]
 
+// The helper runs in this process's cwd, not tools/: a postcss syntax error's
+// message embeds `path.resolve(filename)`, so it has to agree with cargo's.
 const helper = spawn(process.execPath, [path.resolve('tools/reference-helper.cjs')], {
   stdio: ['pipe', 'pipe', 'inherit'],
-  cwd: path.resolve('tools'),
 })
 
 const results = []

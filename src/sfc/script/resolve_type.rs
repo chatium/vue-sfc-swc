@@ -4,6 +4,7 @@
 //! inference. Cross-file type imports are not resolved (they require a file
 //! system, which the SFC pipeline we target does not provide).
 
+use swc_core::common::Spanned;
 use swc_core::ecma::ast::*;
 
 use super::context::{ScriptCompileContext, TypeDecl};
@@ -77,8 +78,17 @@ pub fn resolve_type_elements(
             Ok(merge_elements(maps, is_union))
         }
         TsType::TsTypeRef(r) => resolve_type_ref(ctx, r),
-        _ => Err(ctx.error("Unresolvable type reference or unsupported built-in utility type")),
+        other => Err(unresolvable(ctx, other.span())),
     }
+}
+
+/// `ctx.error(msg, node, scope)` — the frame points at the offending type
+fn unresolvable(ctx: &ScriptCompileContext, span: swc_core::common::Span) -> String {
+    ctx.error_at(
+        "Unresolvable type reference or unsupported built-in utility type",
+        (span.lo.0 as usize, span.hi.0 as usize),
+        true,
+    )
 }
 
 fn type_ref_name(r: &TsTypeRef) -> Option<String> {
@@ -96,11 +106,7 @@ fn resolve_type_ref(
 ) -> Result<ResolvedElements, String> {
     let name = match type_ref_name(r) {
         Some(n) => n,
-        None => {
-            return Err(
-                ctx.error("Unresolvable type reference or unsupported built-in utility type")
-            );
-        }
+        None => return Err(unresolvable(ctx, r.span)),
     };
 
     // `innerResolveTypeReference` checks the scope's imports before its own
@@ -113,9 +119,7 @@ fn resolve_type_ref(
         return match decl {
             TypeDecl::Interface(i) => resolve_interface_members(ctx, &i),
             TypeDecl::Alias(a) => resolve_type_elements(ctx, &a.type_ann),
-            TypeDecl::Enum(_) => Err(ctx.error(
-                "Unresolvable type reference or unsupported built-in utility type",
-            )),
+            TypeDecl::Enum(e) => Err(unresolvable(ctx, e.span)),
         };
     }
 
@@ -163,7 +167,7 @@ fn resolve_type_ref(
                 calls: Vec::new(),
             })
         }
-        _ => Err(ctx.error("Unresolvable type reference or unsupported built-in utility type")),
+        _ => Err(unresolvable(ctx, r.span)),
     }
 }
 

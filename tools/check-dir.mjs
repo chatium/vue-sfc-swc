@@ -36,9 +36,9 @@ console.log(`${files.length} files, ${sources.length} unique`)
 let helper, resolveLine, buf
 function start() {
   buf = ''
+  // cwd matters: see gen-ugc-fixtures.mjs
   helper = spawn(process.execPath, [path.resolve('tools/reference-helper.cjs')], {
     stdio: ['pipe', 'pipe', 'ignore'],
-    cwd: path.resolve('tools'),
   })
   helper.stdout.setEncoding('utf8')
   helper.stdout.on('data', chunk => {

@@ -59,6 +59,10 @@ its quirks are reproduced, because the output has to match byte for byte.
 
 ## Testing
 
+Every bug this port has had is pinned by a minimal case in
+`tests/corpus/regressions.json`, which feeds the `ugc-vue` fixture. Reverting
+any one of the fixes turns `cargo test` red.
+
 Conformance is differential: `tools/gen-fixtures.mjs` runs the real `@vue/compiler-sfc@3.5.38` over
 a corpus (the official `vuejs/core` compiler test inputs plus our own) and writes expected output
 into `tests/fixtures/`. `cargo test` replays the same corpus through the Rust port and asserts

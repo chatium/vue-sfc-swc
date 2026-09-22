@@ -1,0 +1,23 @@
+[
+ "<template><template v-for=\"a in b\"><div/><div v-for=\"c in a\"/></template></template>",
+ "<template><div><template v-if=\"a\"></template><template v-else><template>{{ c }}</template></template></div></template>",
+ "<template><component v-for=\"child in list\" :key=\"child.key\" v-bind=\"child\" /></template>",
+ "<script setup>\nimport a from 'a'\n// mid\nconst x = 1\n</script>",
+ "<template><button @click=\"fileInput?.click()\"/></template>",
+ "<template><button @click=\"openBooking; menuOpen = false\"/></template>",
+ "<template><a :href=\"u\">x</a></template>\n<script setup>\nconst u = `https://x/${h}`\n</script>",
+ "<template><a :x=\"isAdmin\">y</a></template>\n<script setup>\nconst isAdmin = ctx.user?.is?.(1) ?? false\n</script>",
+ "<template><div/></template>\n<style scoped>\n.x {\n  position: relative;\n}\n.a {\n  .b {\n    h3 {\n    }\n    /* c */\n    &::before {\n    }\n  }\n}\n</style>",
+ "<script setup>\nconst RE = /a/g\n</script>",
+ "<script setup lang=\"ts\">\nconst m = defineModel<string | null | undefined>({ required: true })\n</script>",
+ "<template><template v-for=\"s of sections\" :key=\"s\"><i/></template></template>\n<script setup lang=\"ts\">\nconst sections = ['a', 'b'] as const\n</script>",
+ "<script setup lang=\"ts\">\ninterface Props extends Base {\n  a: string\n}\ndefineProps<Props>()\n</script>",
+ "<script setup lang=\"ts\">\ninterface Props extends /* @vue-ignore */ Base {\n  a: string\n}\ndefineProps<Props>()\n</script>",
+ "<script setup lang=\"ts\">\ninterface A extends Base {\n  x: string\n}\ninterface Props {\n  a: A\n}\ndefineProps<Props>()\n</script>",
+ "<script setup lang=\"ts\">\nimport type { Props } from './t'\ndefineProps<Props>()\n</script>",
+ "<script setup lang=\"ts\">\ndefineProps<Foo>()\n</script>",
+ "<template><x-loader v-model=\"loading\"/></template>\n<script>\nexport default { props: { loading: Boolean } }\n</script>",
+ "<style lang=\"stylus\">\nh1\n  color red\n</style>\n\n<script>\nexport default {}\n</script>",
+ "<script lang=\"uppercase-rocks\">\nhello,\nworld!\n</script>",
+ "<template><h1 :class=\"$style.red\">hi</h1></template>\n<style module>\n@value color from './other.css';\n\n.red {\n  color: color;\n}\n</style>"
+]

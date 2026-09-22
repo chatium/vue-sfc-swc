@@ -771,6 +771,8 @@ const UGC_DIAGNOSTIC_DIVERGENCE: &[&str] = &[
     "const enum E { A }",        // babel: "Unexpected reserved word 'enum'."
     "const broken: = 1",         // babel: bare "Unexpected token"
     "$x:</style>",               // dart-sass points one column further right
+    "uppercase-rocks",           // babel: "Missing semicolon."
+    "@value color from",         // dart-sass reads the file and reports ENOENT
 ];
 
 /// End-to-end: the exact pipeline `helper.cjs` runs for `.vue` files.
@@ -920,11 +922,13 @@ fn run_ugc_cases(name: &str, cases: Vec<Value>, strict_errors: bool) {
     }
     let before = failed.len();
     failed.retain(|(src, diff)| {
-        if UGC_DIAGNOSTIC_DIVERGENCE.iter().any(|m| src.contains(m)) {
-            return false;
+        // both sides failed at the same stage and only the message text
+        // differs; a missing or misplaced error is still a failure
+        let wording = diff.starts_with("error got") || diff.starts_with("errors got");
+        if !wording {
+            return true;
         }
-        // both sides failed at the same stage, only the message text differs
-        !(!strict_errors && (diff.starts_with("error got") || diff.starts_with("errors got")))
+        !UGC_DIAGNOSTIC_DIVERGENCE.iter().any(|m| src.contains(m)) && strict_errors
     });
     eprintln!(
         "{name}: {ok}/{} match ({errs} matched as errors, {} known wording divergences)",
