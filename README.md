@@ -162,3 +162,7 @@ comes from an import, which is what `@vue/compiler-sfc` itself does without an `
 
 Source maps are not produced. `compileTemplate` generates one in JS, but the SFC pipeline this
 targets never reads it.
+
+## License
+
+MIT, as a port of [vuejs/core](https://github.com/vuejs/core) — see [LICENSE](LICENSE).
