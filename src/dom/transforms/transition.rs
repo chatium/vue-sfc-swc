@@ -26,7 +26,7 @@ pub fn exit_transition(node: NodeId, ctx: &mut TransformContext) {
         let loc = SourceLocation {
             start: ctx.a.loc(children[0]).start,
             end: ctx.a.loc(*children.last().unwrap()).end,
-            source: String::new(),
+            source: Default::default(),
         };
         let e = create_dom_compiler_error(DomErrorCode::X_TRANSITION_INVALID_CHILDREN, Some(loc));
         ctx.on_error(e);

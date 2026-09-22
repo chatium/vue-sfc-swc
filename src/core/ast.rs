@@ -199,7 +199,71 @@ pub struct Position {
 pub struct SourceLocation {
     pub start: Position,
     pub end: Position,
-    pub source: String,
+    pub source: SrcStr,
+}
+
+/// `loc.source`: a slice of the parsed input. A JS `slice` is O(1) and the
+/// transforms copy locs freely, so this shares the input instead of owning a
+/// copy of each element's whole subtree text.
+#[derive(Clone, Default)]
+pub struct SrcStr {
+    buf: std::sync::Arc<str>,
+    start: u32,
+    end: u32,
+}
+
+impl SrcStr {
+    /// `buf[start..end]`, byte offsets on char boundaries
+    pub fn slice(buf: &std::sync::Arc<str>, start: usize, end: usize) -> Self {
+        debug_assert!(buf.is_char_boundary(start) && buf.is_char_boundary(end));
+        SrcStr { buf: buf.clone(), start: start as u32, end: end as u32 }
+    }
+}
+
+impl std::ops::Deref for SrcStr {
+    type Target = str;
+    fn deref(&self) -> &str {
+        &self.buf[self.start as usize..self.end as usize]
+    }
+}
+
+impl From<String> for SrcStr {
+    fn from(s: String) -> Self {
+        let end = s.len() as u32;
+        SrcStr { buf: s.into(), start: 0, end }
+    }
+}
+
+impl From<&str> for SrcStr {
+    fn from(s: &str) -> Self {
+        SrcStr { buf: s.into(), start: 0, end: s.len() as u32 }
+    }
+}
+
+impl std::fmt::Debug for SrcStr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Debug::fmt(&**self, f)
+    }
+}
+
+impl std::fmt::Display for SrcStr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self)
+    }
+}
+
+impl PartialEq for SrcStr {
+    fn eq(&self, other: &Self) -> bool {
+        **self == **other
+    }
+}
+
+impl Eq for SrcStr {}
+
+impl serde::Serialize for SrcStr {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(self)
+    }
 }
 
 pub fn loc_stub() -> SourceLocation {
@@ -214,7 +278,7 @@ pub fn loc_stub() -> SourceLocation {
             column: 1,
             offset: 0,
         },
-        source: String::new(),
+        source: SrcStr::default(),
     }
 }
 
@@ -619,7 +683,7 @@ impl Node {
 static STUB_LOC: std::sync::LazyLock<SourceLocation> = std::sync::LazyLock::new(loc_stub);
 
 /// Owns every node. Ids are stable; nothing is ever freed.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Arena {
     nodes: Vec<Node>,
     /// `ArrayExpression`s whose `elements` array is the same JS array object as

@@ -1039,7 +1039,7 @@ pub fn compile_script(
         let scoped = sfc.styles.iter().any(|s| s.scoped);
         // `compileTemplate` is handed the descriptor's own (untransformed) AST,
         // so its parse errors are not re-reported here
-        let (t_arena, children, _) = super::compile_template::reparse_template(&sfc.source)
+        let (t_arena, children) = super::compile_template::fresh_template_ast(sfc, arena)
             .ok_or("failed to re-parse template")?;
         let _ = template;
         let r = super::compile_template::compile_template_ast(

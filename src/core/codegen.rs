@@ -45,8 +45,10 @@ impl<'a> CodegenContext<'a> {
         self.newline_at(self.indent_level);
     }
     fn newline_at(&mut self, n: usize) {
-        let s = format!("\n{}", "  ".repeat(n));
-        self.push(&s);
+        self.code.push('\n');
+        for _ in 0..n {
+            self.code.push_str("  ");
+        }
     }
 }
 
@@ -393,11 +395,10 @@ fn gen_node_list(nodes: &[NodeId], ctx: &mut CodegenContext, multilines: bool, c
 }
 
 fn gen_node(node: NodeId, ctx: &mut CodegenContext) {
-    match ctx.a.node(node) {
-        Node::Str(s) => {
-            let s = s.clone();
-            ctx.push(&s);
-        }
+    // the arena outlives `ctx`, so its nodes can be read while pushing
+    let a = ctx.a;
+    match a.node(node) {
+        Node::Str(s) => ctx.push(s),
         Node::Sym(h) => {
             let s = ctx.helper(*h);
             ctx.push(&s);
@@ -419,12 +420,11 @@ fn gen_node(node: NodeId, ctx: &mut CodegenContext) {
             ctx.push(&s);
         }
         Node::SimpleExpression(e) => {
-            let s = if e.is_static {
-                serde_json::to_string(&e.content).unwrap()
+            if e.is_static {
+                ctx.push(&serde_json::to_string(&e.content).unwrap());
             } else {
-                e.content.clone()
-            };
-            ctx.push(&s);
+                ctx.push(&e.content);
+            }
         }
         Node::Interpolation(i) => {
             let content = i.content;
@@ -441,8 +441,7 @@ fn gen_node(node: NodeId, ctx: &mut CodegenContext) {
             gen_node(c, ctx);
         }
         Node::CompoundExpression(c) => {
-            let children = c.children.clone();
-            for child in children {
+            for &child in &c.children {
                 gen_node(child, ctx);
             }
         }

@@ -21,5 +21,8 @@ base64 = "=0.22.1"
 sha1 = "=0.10.7"
 regex = "=1.12.3"
 grass = { version = "0.13.4", default-features = false, features = ["random"] }
+# the port allocates heavily; the system allocator costs ~35% single-threaded and
+# stops it scaling across the consumer's worker threads
+swc_malloc = "=1.2.5"
 
 [dev-dependencies]

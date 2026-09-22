@@ -7,6 +7,7 @@ use std::collections::HashMap;
 struct Chunk {
     start: usize,
     end: usize,
+    /// only read once `edited`; until then the content is `original[start..end]`
     content: String,
     intro: String,
     outro: String,
@@ -31,7 +32,7 @@ impl MagicString {
         let chunk = Chunk {
             start: 0,
             end: original.len(),
-            content: original.to_string(),
+            content: String::new(),
             intro: String::new(),
             outro: String::new(),
             prev: None,
@@ -78,31 +79,16 @@ impl MagicString {
     }
 
     fn split_chunk(&mut self, index: usize, split_at: usize) {
-        let (start, end, content, outro, next, edited) = {
-            let c = &self.chunks[index];
-            (
-                c.start,
-                c.end,
-                c.content.clone(),
-                c.outro.clone(),
-                c.next,
-                c.edited,
-            )
+        let (end, outro, next, edited) = {
+            let c = &mut self.chunks[index];
+            (c.end, std::mem::take(&mut c.outro), c.next, c.edited)
         };
-        let slice_index = split_at - start;
-        let (first_content, second_content) = if edited {
-            // magic-string keeps edited content on the first half
-            (content.clone(), String::new())
-        } else {
-            (
-                content[..slice_index].to_string(),
-                content[slice_index..].to_string(),
-            )
-        };
+        // magic-string keeps edited content on the first half; an unedited
+        // half reads its slice of `original`
         let new_chunk = Chunk {
             start: split_at,
             end,
-            content: second_content,
+            content: String::new(),
             intro: String::new(),
             outro,
             prev: Some(index),
@@ -114,8 +100,6 @@ impl MagicString {
         {
             let c = &mut self.chunks[index];
             c.end = split_at;
-            c.content = first_content;
-            c.outro = String::new();
             c.next = Some(new_index);
         }
         if let Some(n) = next {
@@ -283,7 +267,7 @@ impl MagicString {
         while let Some(i) = cur {
             let c = &self.chunks[i];
             out.push_str(&c.intro);
-            out.push_str(&c.content);
+            out.push_str(if c.edited { &c.content } else { &self.original[c.start..c.end] });
             out.push_str(&c.outro);
             cur = c.next;
         }

@@ -212,6 +212,11 @@ pub struct Parser {
     // --- tokenizer state ---
     state: State,
     buffer: Vec<u16>,
+    /// the input as UTF-8, and the byte offset of each UTF-16 unit of
+    /// `buffer` (`u32::MAX` inside a surrogate pair), so slicing is a copy
+    /// rather than a transcode
+    src: std::sync::Arc<str>,
+    byte_of: Vec<u32>,
     section_start: i64,
     index: usize,
     entity_start: usize,
@@ -255,6 +260,18 @@ impl Parser {
         Parser {
             state: State::Text,
             buffer: input.encode_utf16().collect(),
+            src: input.into(),
+            byte_of: {
+                let mut v = Vec::with_capacity(input.len() + 1);
+                for (b, c) in input.char_indices() {
+                    v.push(b as u32);
+                    if c.len_utf16() == 2 {
+                        v.push(u32::MAX);
+                    }
+                }
+                v.push(input.len() as u32);
+                v
+            },
             section_start: 0,
             index: 0,
             entity_start: 0,
@@ -303,11 +320,23 @@ impl Parser {
     }
 
     fn get_slice(&self, start: usize, end: usize) -> String {
+        self.get_src(start, end).to_string()
+    }
+
+    /// `getSlice` as a shared slice of the input
+    fn get_src(&self, start: usize, end: usize) -> SrcStr {
         let end = end.min(self.buffer.len());
         if start >= end {
-            return String::new();
+            return SrcStr::default();
         }
-        String::from_utf16_lossy(&self.buffer[start..end])
+        match (self.byte_of[start], self.byte_of[end]) {
+            (b0, b1) if b0 != u32::MAX && b1 != u32::MAX => {
+                SrcStr::slice(&self.src, b0 as usize, b1 as usize)
+            }
+            // a boundary splits a surrogate pair: JS keeps the lone half, which
+            // `str` cannot hold
+            _ => String::from_utf16_lossy(&self.buffer[start..end]).into(),
+        }
     }
 
     pub fn get_pos(&self, index: usize) -> Position {
@@ -374,7 +403,7 @@ impl Parser {
         SourceLocation {
             start: self.get_pos(start),
             end: self.get_pos(end),
-            source: self.get_slice(start, end),
+            source: self.get_src(start, end),
         }
     }
 
@@ -383,13 +412,13 @@ impl Parser {
         SourceLocation {
             start: self.get_pos(start),
             end: Position::default(),
-            source: String::new(),
+            source: SrcStr::default(),
         }
     }
 
     fn set_loc_end(&self, loc: &mut SourceLocation, end: usize) {
         loc.end = self.get_pos(end);
-        loc.source = self.get_slice(loc.start.offset.max(0) as usize, end);
+        loc.source = self.get_src(loc.start.offset.max(0) as usize, end);
     }
 
     fn emit_error(&mut self, code: ErrorCode, index: usize) {
@@ -1159,7 +1188,7 @@ impl Parser {
             let id = last.unwrap();
             let start_off = self.arena.text(id).loc.start.offset;
             let end_pos = self.get_pos(end);
-            let src = self.get_slice(start_off.max(0) as usize, end);
+            let src = self.get_src(start_off.max(0) as usize, end);
             let t = self.arena.text_mut(id);
             t.content.push_str(&content);
             t.loc.end = end_pos;
@@ -1178,7 +1207,7 @@ impl Parser {
             let id = last.unwrap();
             let start_off = self.arena.text(id).loc.start.offset;
             let end_pos = self.get_pos(end);
-            let src = self.get_slice(start_off.max(0) as usize, end);
+            let src = self.get_src(start_off.max(0) as usize, end);
             let t = self.arena.text_mut(id);
             t.content.push_str(&content);
             t.loc.end = end_pos;
@@ -1187,7 +1216,7 @@ impl Parser {
             let loc = SourceLocation {
                 start: start_pos,
                 end: self.get_pos(end),
-                source: content.clone(),
+                source: content.clone().into(),
             };
             let id = self.arena.add(Node::Text(Box::new(TextNode { content, loc })));
             self.current_children_mut().push(id);
@@ -1546,7 +1575,7 @@ impl Parser {
             {
                 let start_off = prop.loc().start.offset.max(0) as usize;
                 let pos = self.get_pos(end);
-                let src = self.get_slice(start_off, end);
+                let src = self.get_src(start_off, end);
                 let loc: &mut SourceLocation = match &mut prop {
                     Node::Attribute(a) => &mut a.loc,
                     Node::Directive(d) => &mut d.loc,
@@ -1749,7 +1778,7 @@ impl Parser {
                 el.inner_loc.as_ref().unwrap().start.offset.max(0) as usize,
                 el.inner_loc.as_ref().unwrap().end.offset.max(0) as usize,
             );
-            let src = self.get_slice(s, e);
+            let src = self.get_src(s, e);
             if let Some(inner) = el.inner_loc.as_mut() {
                 inner.source = src;
             }
@@ -1823,7 +1852,7 @@ impl Parser {
                 line: d.loc.start.line,
                 column: d.loc.start.column + utf16_len(&raw_name) as i64,
             },
-            source: self.get_slice(
+            source: self.get_src(
                 name_start.max(0) as usize,
                 (name_start + utf16_len(&raw_name) as i64).max(0) as usize,
             ),

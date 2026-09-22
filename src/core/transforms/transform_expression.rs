@@ -451,7 +451,7 @@ pub fn process_expression(
         let loc = SourceLocation {
             start: advance_position_with_clone(&loc_start, &source, Some(start)),
             end: advance_position_with_clone(&loc_start, &source, Some(end)),
-            source: source.clone(),
+            source: source.clone().into(),
         };
         let const_type = if ids[i].is_constant {
             ConstantType::CanStringify

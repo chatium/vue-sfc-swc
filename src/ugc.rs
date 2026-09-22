@@ -127,15 +127,16 @@ pub fn compile_vue(source: &str, path: &str) -> Result<VueOutput, VueFailure> {
     let mut template_code = String::new();
     let mut template_failed = false;
     if let Some(template) = &d.template {
-        let (t_arena, t_children, t_errors) =
-            crate::sfc::compile_template::reparse_template(source)
-                .unwrap_or_else(|| (crate::core::ast::Arena::new(), Vec::new(), Vec::new()));
+        // parse errors returned above, so the fresh AST carries none
+        let (t_arena, t_children) =
+            crate::sfc::compile_template::fresh_template_ast(d, &parsed.arena)
+                .unwrap_or_default();
         let _ = template;
         let r = compile_template_ast(
             t_arena,
             t_children,
             source.to_string(),
-            t_errors,
+            Vec::new(),
             TemplateCompileOptions {
                 filename: path.to_string(),
                 id: "someid".to_string(),
@@ -254,14 +255,15 @@ pub fn compile_vue(source: &str, path: &str) -> Result<VueOutput, VueFailure> {
 
     if d.template.is_some() && d.script_setup.is_none() {
         // the render function is compiled separately and attached
-        let (t_arena, t_children, t_errors) =
-            crate::sfc::compile_template::reparse_template(source)
-                .unwrap_or_else(|| (crate::core::ast::Arena::new(), Vec::new(), Vec::new()));
+        // parse errors returned above, so the fresh AST carries none
+        let (t_arena, t_children) =
+            crate::sfc::compile_template::fresh_template_ast(d, &parsed.arena)
+                .unwrap_or_default();
         let r = compile_template_ast(
             t_arena,
             t_children,
             source.to_string(),
-            t_errors,
+            Vec::new(),
             TemplateCompileOptions {
                 filename: path.to_string(),
                 id: id.clone(),

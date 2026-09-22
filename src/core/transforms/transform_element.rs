@@ -84,7 +84,7 @@ pub fn exit_element(_node: NodeId, ctx: &mut TransformContext) {
                 let loc = SourceLocation {
                     start: ctx.a.loc(children[0]).start,
                     end: ctx.a.loc(*children.last().unwrap()).end,
-                    source: String::new(),
+                    source: Default::default(),
                 };
                 ctx.error(ErrorCode::X_KEEP_ALIVE_INVALID_CHILDREN, Some(loc));
             }

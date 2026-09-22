@@ -257,7 +257,7 @@ pub fn to_handler_key(s: &str) -> String {
 pub fn get_exp_source(a: &Arena, exp: NodeId) -> String {
     match a.node(exp) {
         Node::SimpleExpression(e) => e.content.clone(),
-        other => other.loc().source.clone(),
+        other => other.loc().source.to_string(),
     }
 }
 

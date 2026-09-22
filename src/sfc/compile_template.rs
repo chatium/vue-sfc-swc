@@ -128,6 +128,19 @@ pub fn compile_template_ast(
     }
 }
 
+/// The fresh template AST `compileTemplate` re-parses once the descriptor's
+/// has been transformed. That parse uses the options `parse` did and is
+/// deterministic, so a copy of the descriptor's arena is the same tree.
+pub fn fresh_template_ast(
+    sfc: &super::parse::SfcDescriptor,
+    arena: &Arena,
+) -> Option<(Arena, Vec<NodeId>)> {
+    match sfc.template.as_ref().and_then(|t| t.ast.clone()) {
+        Some(children) => Some((arena.clone(), children)),
+        None => reparse_template(&sfc.source).map(|(a, c, _)| (a, c)),
+    }
+}
+
 /// Re-parses the SFC and returns the `<template>` block's children, matching
 /// what `compileTemplate` does when the descriptor AST was already transformed.
 pub fn reparse_template(
