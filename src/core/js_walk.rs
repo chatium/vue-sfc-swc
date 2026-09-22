@@ -208,7 +208,21 @@ impl<'a> Walker<'a> {
         self.walk_expr_with(e, ParentKind::None)
     }
 
+    /// `isInNewExpression(parentStack)` walks up from the identifier through
+    /// member expressions only, so the flag is inherited across a member and
+    /// cleared by anything else.
     fn walk_expr_with(&mut self, e: &Expr, parent: ParentKind) {
+        let saved = self.in_new_expression;
+        self.in_new_expression = match parent {
+            ParentKind::New => true,
+            ParentKind::Member => saved,
+            _ => false,
+        };
+        self.walk_expr_at(e, parent);
+        self.in_new_expression = saved;
+    }
+
+    fn walk_expr_at(&mut self, e: &Expr, parent: ParentKind) {
         match e {
             Expr::Ident(i) => self.ref_ident(i, parent),
             Expr::This(_) | Expr::Lit(_) | Expr::PrivateName(_) | Expr::Invalid(_) => {}
@@ -301,17 +315,14 @@ impl<'a> Walker<'a> {
                     Callee::Super(_) | Callee::Import(_) => {}
                 }
                 for a in &c.args {
-                    self.walk_expr_with(&a.expr, ParentKind::Other);
+                    self.walk_expr_with(&a.expr, ParentKind::Call);
                 }
             }
             Expr::New(n) => {
-                let saved = self.in_new_expression;
-                self.in_new_expression = true;
                 self.walk_expr_with(&n.callee, ParentKind::New);
-                self.in_new_expression = saved;
                 if let Some(args) = &n.args {
                     for a in args {
-                        self.walk_expr_with(&a.expr, ParentKind::Other);
+                        self.walk_expr_with(&a.expr, ParentKind::New);
                     }
                 }
             }

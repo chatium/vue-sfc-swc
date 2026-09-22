@@ -96,13 +96,17 @@ successful compile is byte-identical, and the 17 remaining cases are invalid inp
 diagnostic's wording differs (that corpus is not fixed, so `ugc_vue_local` reports those rather
 than failing on them).
 
-Three public Vue codebases, checked the same way:
+Seven public Vue codebases, checked the same way — 2646 of 2647 distinct SFCs:
 
 | repo | files | result |
 | --- | --- | --- |
 | [elk-zone/elk](https://github.com/elk-zone/elk) | 264 | 264 |
 | [vuetifyjs/vuetify](https://github.com/vuetifyjs/vuetify) | 1264 | 1263 |
 | [youzan/vant](https://github.com/youzan/vant) | 128 | 128 |
+| [vbenjs/vue-vben-admin](https://github.com/vbenjs/vue-vben-admin) | 574 | 574 |
+| [varletjs/varlet](https://github.com/varletjs/varlet) | 220 | 220 |
+| [slidevjs/slidev](https://github.com/slidevjs/slidev) | 125 | 125 |
+| [vuejs/vitepress](https://github.com/vuejs/vitepress) | 71 | 71 |
 
 ```bash
 git clone --depth 1 https://github.com/elk-zone/elk /tmp/elk

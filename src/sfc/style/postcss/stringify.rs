@@ -303,15 +303,17 @@ impl<'a> Stringifier<'a> {
             return Some(default_raw(detect));
         }
 
+        // `before` and `after` depend on the node's depth, so they are
+        // computed per node and never cached
+        if detect == "before" || detect == "after" {
+            return Some(self.before_after(node, detect));
+        }
+
         if let Some(cached) = self.cache.get(detect) {
             return cached.clone();
         }
 
-        let value = if detect == "before" || detect == "after" {
-            Some(self.before_after(node, detect))
-        } else {
-            self.detect_raw(detect, own)
-        };
+        let value = self.detect_raw(detect, own);
 
         let value = Some(value.unwrap_or_else(|| default_raw(detect)));
         self.cache.insert(detect.to_string(), value.clone());

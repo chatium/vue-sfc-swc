@@ -19,5 +19,7 @@
  "<template><x-loader v-model=\"loading\"/></template>\n<script>\nexport default { props: { loading: Boolean } }\n</script>",
  "<style lang=\"stylus\">\nh1\n  color red\n</style>\n\n<script>\nexport default {}\n</script>",
  "<script lang=\"uppercase-rocks\">\nhello,\nworld!\n</script>",
- "<template><div class=\"x\"/></template>\n<style lang=\"less\" scoped>\n// a less line comment\n.x {\n  color: red;\n}\n</style>"
+ "<template><div class=\"x\"/></template>\n<style lang=\"less\" scoped>\n// a less line comment\n.x {\n  color: red;\n}\n</style>",
+ "<template><i :t=\"new Date(x).toLocaleString()\"/></template>\n<script setup>\nimport { x } from 'x'\n</script>",
+ "<template><div/></template>\n<style lang=\"less\" scoped>\n.a {\n  margin: 0;\n}\n.b {\n  padding: 0;\n  li {\n    border: 0;\n    &:first-child {\n    }\n  }\n}\n</style>"
 ]
