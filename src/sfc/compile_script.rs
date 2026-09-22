@@ -865,6 +865,55 @@ pub fn compile_script(
     for (k, v) in &setup_bindings.0 {
         ctx.set_binding(k, *v);
     }
+
+    // `v-model` cannot write to a `const` reactive binding, so the compiler
+    // demotes it to `let`
+    if let Some(children) = sfc
+        .template
+        .as_ref()
+        .filter(|t| t.src.is_none())
+        .and_then(|t| t.ast.as_ref())
+    {
+        let v_model_ids = analyze_template(arena, children).v_model_ids;
+        let to_demote: HashSet<String> = v_model_ids
+            .into_iter()
+            .filter(|id| {
+                setup_bindings.0.iter().any(|(k, t)| {
+                    k == id && *t == BindingType::SetupReactiveConst
+                })
+            })
+            .collect();
+        if !to_demote.is_empty() {
+            for item in &setup_ast.body {
+                let ModuleItem::Stmt(Stmt::Decl(Decl::Var(v))) = item else {
+                    continue;
+                };
+                if v.kind != VarDeclKind::Const || v.declare {
+                    continue;
+                }
+                let demoted: Vec<String> = v
+                    .decls
+                    .iter()
+                    .filter_map(|d| match &d.name {
+                        Pat::Ident(i) if to_demote.contains(&i.id.sym.to_string()) => {
+                            Some(i.id.sym.to_string())
+                        }
+                        _ => None,
+                    })
+                    .collect();
+                if demoted.is_empty() {
+                    continue;
+                }
+                let start = v.span.lo.0 as usize + start_offset;
+                ctx.s.overwrite(start, start + "const".len(), "let");
+                for id in demoted {
+                    setup_bindings.set(&id, BindingType::SetupLet);
+                    ctx.set_binding(&id, BindingType::SetupLet);
+                }
+            }
+        }
+    }
+
     ctx.binding_metadata.is_script_setup = Some(true);
 
     // 7. useCssVars

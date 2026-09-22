@@ -29,5 +29,6 @@
  "<script setup lang=\"ts\">\nimport type { AccordionProps } from './A'\ntype P = Other<'x'>\ninterface Props {\n  ui?: P['slots'] & AccordionProps['ui']\n}\ndefineProps<Props>()\n</script>",
  "<script setup lang=\"ts\">\nimport type { H } from './h'\ntype Props = {\n  a: string\n} & /** @vue-ignore */ Omit<H, 'name'>\ndefineProps<Props>()\n</script>",
  "<script setup lang=\"ts\">\nimport type { H } from './h'\ndefineProps</** @vue-ignore */ H & { a: string }>()\n</script>",
- "<script setup lang=\"ts\">\nasync function f(a: string): Promise<void>\nasync function f(a: number): Promise<void>\nasync function f(a: any): Promise<void> {\n  return a\n}\n</script>"
+ "<script setup lang=\"ts\">\nasync function f(a: string): Promise<void>\nasync function f(a: number): Promise<void>\nasync function f(a: any): Promise<void> {\n  return a\n}\n</script>",
+ "<template><VaAccordion v-model=\"s\" /></template>\n<script setup>\nimport { reactive } from 'vue'\nconst s = reactive([false])\n</script>"
 ]

@@ -96,21 +96,26 @@ successful compile is byte-identical, and the 17 remaining cases are invalid inp
 diagnostic's wording differs (that corpus is not fixed, so `ugc_vue_local` reports those rather
 than failing on them).
 
-Eleven public Vue codebases, checked the same way — 8761 of 8763 distinct SFCs:
+Sixteen public Vue codebases, checked the same way — 12964 of 12966 distinct SFCs:
 
 | repo | files | result |
 | --- | --- | --- |
 | [unovue/shadcn-vue](https://github.com/unovue/shadcn-vue) | 4380 | 4380 |
+| [primefaces/primevue](https://github.com/primefaces/primevue) | 2517 | 2517 |
 | [vuetifyjs/vuetify](https://github.com/vuetifyjs/vuetify) | 1264 | 1263 |
+| [Tencent/tdesign-vue-next](https://github.com/Tencent/tdesign-vue-next) | 845 | 845 |
 | [element-plus/element-plus](https://github.com/element-plus/element-plus) | 816 | 816 |
 | [nuxt/ui](https://github.com/nuxt/ui) | 790 | 790 |
+| [vueComponent/ant-design-vue](https://github.com/vueComponent/ant-design-vue) | 731 | 731 |
 | [vbenjs/vue-vben-admin](https://github.com/vbenjs/vue-vben-admin) | 574 | 574 |
 | [elk-zone/elk](https://github.com/elk-zone/elk) | 264 | 264 |
 | [varletjs/varlet](https://github.com/varletjs/varlet) | 220 | 220 |
 | [PanJiaChen/vue-element-admin](https://github.com/PanJiaChen/vue-element-admin) | 131 | 130 |
 | [youzan/vant](https://github.com/youzan/vant) | 128 | 128 |
 | [slidevjs/slidev](https://github.com/slidevjs/slidev) | 125 | 125 |
+| [epicmaxco/vuestic-admin](https://github.com/epicmaxco/vuestic-admin) | 99 | 99 |
 | [vuejs/vitepress](https://github.com/vuejs/vitepress) | 71 | 71 |
+| [vuejs/core](https://github.com/vuejs/core) | 11 | 11 |
 
 ```bash
 git clone --depth 1 https://github.com/elk-zone/elk /tmp/elk
