@@ -9,7 +9,7 @@ use super::magic_string::MagicString;
 /// `(line:column)` Babel appends to its messages.
 pub fn rewrite_default(input: &str, as_: &str, ts: bool) -> Result<String, String> {
     let program =
-        crate::core::jsparse::parse_module_with_pos(input, ts).map_err(|(msg, pos)| {
+        crate::core::jsparse::parse_module_with_pos(input, ts, false).map_err(|(msg, pos)| {
             let head = &input[..pos.min(input.len())];
             let line = head.matches('\n').count() + 1;
             let col = head.rsplit('\n').next().unwrap_or("").chars().count();

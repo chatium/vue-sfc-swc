@@ -123,6 +123,17 @@ node tools/check-dir.mjs /tmp/elk            # writes tests/fixtures/ugc-vue-loc
 cargo test --test conformance ugc_vue_local  # or: cargo run --example triage -- <corpus.json>
 ```
 
+The SSR output is checked over the same trees, by `tools/check-dir-ssr.mjs` and
+`examples/triage-ssr.rs`, which compare `compileTemplate({ ssr: true })` and
+the inline SSR render function. All 10871 SFCs whose reference compiles match;
+the other 2095 fail identically on both sides (a `defineProps` type that would
+have to come from an import).
+
+```bash
+node tools/check-dir-ssr.mjs /tmp/elk /tmp/elk-ssr.json
+cargo run --release --example triage-ssr -- /tmp/elk-ssr.json
+```
+
 `examples/triage.rs` replays such a corpus and groups the divergences by kind,
 which is the quicker way in when a fresh tree turns some up.
 

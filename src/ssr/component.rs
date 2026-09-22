@@ -234,6 +234,22 @@ pub fn create_vnode_slot_branch(
     ctx.a.add(Node::ReturnStatement(returns))
 }
 
+/// `Object.getOwnPropertyNames(Object.prototype)`
+const OBJECT_PROTOTYPE_MEMBERS: &[&str] = &[
+    "constructor",
+    "__defineGetter__",
+    "__defineSetter__",
+    "hasOwnProperty",
+    "__lookupGetter__",
+    "__lookupSetter__",
+    "isPrototypeOf",
+    "propertyIsEnumerable",
+    "toString",
+    "valueOf",
+    "__proto__",
+    "toLocaleString",
+];
+
 /// `subTransform` — the same arena and helper/asset sets, but the vnode
 /// transform preset and an isolated copy of the scope bookkeeping.
 fn sub_transform(node: NodeId, ctx: &mut TransformContext) {
@@ -249,6 +265,11 @@ fn sub_transform(node: NodeId, ctx: &mut TransformContext) {
     let saved_ssr = std::mem::replace(&mut ctx.opts.ssr, false);
     let saved_scopes = ctx.scopes;
     let saved_identifiers = ctx.identifiers.clone();
+    // `{ ...parentContext.identifiers }` is a plain object, so `Object.prototype`
+    // stays in its lookup chain and answers for every member it defines
+    for name in OBJECT_PROTOTYPE_MEMBERS {
+        ctx.identifiers.entry(name.to_string()).or_insert(1);
+    }
     let saved_parent = ctx.parent;
     let saved_grand_parent = ctx.grand_parent;
     let saved_index = ctx.child_index;

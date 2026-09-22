@@ -5,15 +5,20 @@ use swc_core::ecma::ast::{Expr, Module, Program};
 use swc_core::ecma::parser::{EsSyntax, Parser, StringInput, Syntax, TsSyntax, lexer::Lexer};
 
 fn syntax(ts: bool) -> Syntax {
+    syntax_with(ts, false)
+}
+
+/// `resolveParserPlugins` adds the `jsx` plugin for a `jsx`/`tsx` block.
+fn syntax_with(ts: bool, jsx: bool) -> Syntax {
     if ts {
         Syntax::Typescript(TsSyntax {
-            tsx: false,
+            tsx: jsx,
             decorators: true,
             ..Default::default()
         })
     } else {
         Syntax::Es(EsSyntax {
-            jsx: false,
+            jsx,
             ..Default::default()
         })
     }
@@ -53,12 +58,16 @@ pub fn parse_expression(src: &str, ts: bool) -> Result<Expr, String> {
 }
 
 /// Parses `src` as an ES module, reporting the byte offset of a syntax error.
-pub fn parse_module_with_pos(src: &str, ts: bool) -> Result<Module, (String, usize)> {
+pub fn parse_module_with_pos(
+    src: &str,
+    ts: bool,
+    jsx: bool,
+) -> Result<Module, (String, usize)> {
     let cm: Lrc<SourceMap> = Default::default();
     let fm = cm.new_source_file(Lrc::new(FileName::Anon), src.to_string());
     let base = fm.start_pos;
     let lexer = Lexer::new(
-        syntax(ts),
+        syntax_with(ts, jsx),
         Default::default(),
         StringInput::from(&*fm),
         None,

@@ -157,19 +157,23 @@ impl ScriptCompileContext {
             .map(|s| utf16_to_byte(&source, s.loc.end.offset.max(0) as usize))
             .unwrap_or(0);
 
-        // `resolveParserPlugins` only enables TypeScript for ts/tsx blocks
+        // `resolveParserPlugins` enables TypeScript for ts/tsx and JSX for
+        // jsx/tsx blocks
+        let is_jsx = is_jsx_lang(&script_lang) || is_jsx_lang(&setup_lang);
         let parse = |content: &str, block_start: usize| -> Result<Module, String> {
-            crate::core::jsparse::parse_module_with_pos(content, is_ts).map_err(|(msg, pos)| {
-                // `parse()` in compileScript re-throws babel errors with the
-                // block-relative `(line:col)` and a frame over the whole SFC
-                let (line, col) = line_col(content, pos);
-                let at = byte_to_utf16(&source, block_start + pos);
-                format!(
-                    "[vue/compiler-sfc] {msg} ({line}:{col})\n\n{}\n{}",
-                    descriptor.filename,
-                    crate::core::codeframe::generate_code_frame(&source, at, at + 1)
-                )
-            })
+            crate::core::jsparse::parse_module_with_pos(content, is_ts, is_jsx).map_err(
+                |(msg, pos)| {
+                    // `parse()` in compileScript re-throws babel errors with
+                    // the block-relative `(line:col)` and a frame over the SFC
+                    let (line, col) = line_col(content, pos);
+                    let at = byte_to_utf16(&source, block_start + pos);
+                    format!(
+                        "[vue/compiler-sfc] {msg} ({line}:{col})\n\n{}\n{}",
+                        descriptor.filename,
+                        crate::core::codeframe::generate_code_frame(&source, at, at + 1)
+                    )
+                },
+            )
         };
 
         let script_ast = match &descriptor.script {
@@ -289,6 +293,11 @@ impl ScriptCompileContext {
 
 pub fn is_js(lang: &Option<String>) -> bool {
     matches!(lang.as_deref(), Some("js") | Some("jsx"))
+}
+
+/// the langs `resolveParserPlugins` adds the `jsx` plugin for
+pub fn is_jsx_lang(lang: &Option<String>) -> bool {
+    matches!(lang.as_deref(), Some("jsx") | Some("tsx") | Some("mtsx"))
 }
 
 pub fn is_ts(lang: &Option<String>) -> bool {
