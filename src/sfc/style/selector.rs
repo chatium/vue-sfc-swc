@@ -124,7 +124,10 @@ fn descendant_combinator(space: &str) -> SelNode {
     node
 }
 
-pub fn parse(input: &str) -> SelRoot {
+/// `processSync` — the parser rejects anything it cannot place, which for a
+/// stray `/` is how Less's `//` comments surface once postcss has folded them
+/// into a selector.
+pub fn parse(input: &str) -> Result<SelRoot, String> {
     let chars: Vec<char> = input.chars().collect();
     let mut root = SelRoot::default();
     let mut current = Selector::default();
@@ -192,6 +195,11 @@ pub fn parse(input: &str) -> SelRoot {
                 }
                 push_node!(node);
                 continue;
+            }
+            '/' if !starts_with(&chars, i, "/deep/") && !starts_with(&chars, i, "/*") => {
+                return Err(
+                    "Unexpected '/'. Escaping special characters with \\ may help.".to_string(),
+                );
             }
             '/' if starts_with(&chars, i, "/deep/") => {
                 let mut node = SelNode::combinator("/deep/");
@@ -342,8 +350,7 @@ pub fn parse(input: &str) -> SelRoot {
                         j += 1;
                     }
                     let inner: String = chars[arg_start..j.min(chars.len())].iter().collect();
-                    let inner_root = parse(&inner);
-                    node.nodes = inner_root.selectors;
+                    node.nodes = parse(&inner)?.selectors;
                     i = (j + 1).min(chars.len());
                 }
                 push_node!(node);
@@ -371,7 +378,7 @@ pub fn parse(input: &str) -> SelRoot {
             .push(SelNode::new(SelKind::Tag, "", &pending_spaces));
     }
     root.selectors.push(current);
-    root
+    Ok(root)
 }
 
 fn starts_with(chars: &[char], i: usize, s: &str) -> bool {

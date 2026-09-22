@@ -19,5 +19,5 @@
  "<template><x-loader v-model=\"loading\"/></template>\n<script>\nexport default { props: { loading: Boolean } }\n</script>",
  "<style lang=\"stylus\">\nh1\n  color red\n</style>\n\n<script>\nexport default {}\n</script>",
  "<script lang=\"uppercase-rocks\">\nhello,\nworld!\n</script>",
- "<template><h1 :class=\"$style.red\">hi</h1></template>\n<style module>\n@value color from './other.css';\n\n.red {\n  color: color;\n}\n</style>"
+ "<template><div class=\"x\"/></template>\n<style lang=\"less\" scoped>\n// a less line comment\n.x {\n  color: red;\n}\n</style>"
 ]

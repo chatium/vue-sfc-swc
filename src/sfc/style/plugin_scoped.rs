@@ -35,7 +35,7 @@ fn strip_vendor(prop: &str) -> &str {
     prop
 }
 
-pub fn scoped_plugin(tree: &mut CssTree, id: &str) {
+pub fn scoped_plugin(tree: &mut CssTree, id: &str) -> Result<(), String> {
     let short_id = id.strip_prefix("data-v-").unwrap_or(id).to_string();
     let mut keyframes: HashMap<String, String> = HashMap::new();
     let mut processed: HashSet<usize> = HashSet::new();
@@ -61,7 +61,7 @@ pub fn scoped_plugin(tree: &mut CssTree, id: &str) {
         for node_id in pending {
             match tree.get(node_id).kind {
                 CssKind::Rule => {
-                    process_rule(tree, id, node_id, &mut processed, &mut deep_rules);
+                    process_rule(tree, id, node_id, &mut processed, &mut deep_rules)?;
                 }
                 CssKind::AtRule => {
                     seen_atrules.insert(node_id);
@@ -76,26 +76,6 @@ pub fn scoped_plugin(tree: &mut CssTree, id: &str) {
                 }
                 _ => {}
             }
-        }
-    }
-
-    #[allow(unreachable_code)]
-    for node_id in Vec::<usize>::new() {
-        match tree.get(node_id).kind {
-            CssKind::Rule => {
-                process_rule(tree, id, node_id, &mut processed, &mut deep_rules);
-            }
-            CssKind::AtRule => {
-                let name = tree.get(node_id).name.clone();
-                let params = tree.get(node_id).params.clone();
-                if is_keyframes(&name) && !params.ends_with(&format!("-{short_id}")) {
-                    let new = format!("{params}-{short_id}");
-                    keyframes.insert(params, new.clone());
-                    tree.get_mut(node_id).params = new;
-                    tree.get_mut(node_id).raws.params = None;
-                }
-            }
-            _ => {}
         }
     }
 
@@ -140,6 +120,7 @@ pub fn scoped_plugin(tree: &mut CssTree, id: &str) {
             }
         }
     }
+    Ok(())
 }
 
 fn process_rule(
@@ -148,15 +129,15 @@ fn process_rule(
     rule: usize,
     processed: &mut HashSet<usize>,
     deep_rules: &mut HashSet<usize>,
-) {
+) -> Result<(), String> {
     if processed.contains(&rule) {
-        return;
+        return Ok(());
     }
     if let Some(parent) = tree.get(rule).parent {
         if tree.get(parent).kind == CssKind::AtRule && is_keyframes(&tree.get(parent).name) {
             // postcss only visits each node once; the worklist needs the same
             processed.insert(rule);
-            return;
+            return Ok(());
         }
     }
     processed.insert(rule);
@@ -175,7 +156,7 @@ fn process_rule(
     }
 
     let selector = tree.get(rule).selector.clone();
-    let mut root = parse_selector(&selector);
+    let mut root = parse_selector(&selector)?;
     let mut ctx = RewriteCtx {
         id: id.to_string(),
         rule_is_deep: false,
@@ -213,6 +194,7 @@ fn process_rule(
 
     tree.get_mut(rule).selector = root.to_string();
     tree.get_mut(rule).raws.selector = None;
+    Ok(())
 }
 
 struct RewriteCtx {

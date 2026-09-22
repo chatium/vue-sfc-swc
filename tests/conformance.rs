@@ -514,6 +514,27 @@ fn ssr_css_vars() {
     report("ssr-css-vars", cases.len(), failed);
 }
 
+/// `@value ... from` is not in the differential corpus: reading the imported
+/// file crashes the reference helper from an async callback, so the reference
+/// output is not reproducible. The behaviour is pinned here instead.
+#[test]
+fn css_module_value_import_is_rejected() {
+    let r = vue_sfc::sfc::compile_style::compile_style(
+        vue_sfc::sfc::compile_style::StyleCompileOptions {
+            source: "@value color from './other.css';\n.red { color: color }".into(),
+            filename: "component.vue".into(),
+            id: "xxxxxxxx".into(),
+            modules: true,
+            ..Default::default()
+        },
+    );
+    let msg = r.errors.first().map(|e| e.msg.clone()).unwrap_or_default();
+    assert!(
+        msg.contains("@value") && msg.contains("./other.css"),
+        "expected an unresolved @value import, got {msg:?}"
+    );
+}
+
 #[test]
 fn postcss_roundtrip() {
     let cases = load("postcss-roundtrip");
@@ -553,7 +574,7 @@ fn selector_roundtrip() {
     let cases: Vec<String> = serde_json::from_str(&text).unwrap();
     let mut failed: Vec<(String, String)> = Vec::new();
     for input in &cases {
-        let root = vue_sfc::sfc::style::selector::parse(input);
+        let root = vue_sfc::sfc::style::selector::parse(input).unwrap();
         let got = root.to_string();
         if &got != input {
             failed.push((input.clone(), format!("got {got:?}")));
@@ -772,7 +793,6 @@ const UGC_DIAGNOSTIC_DIVERGENCE: &[&str] = &[
     "const broken: = 1",         // babel: bare "Unexpected token"
     "$x:</style>",               // dart-sass points one column further right
     "uppercase-rocks",           // babel: "Missing semicolon."
-    "@value color from",         // dart-sass reads the file and reports ENOENT
 ];
 
 /// End-to-end: the exact pipeline `helper.cjs` runs for `.vue` files.

@@ -115,7 +115,13 @@ pub fn apply(tree: &mut CssTree, original_css: &str) -> ModulesResult {
                     }
                 }
                 let selector = tree.get(id).selector.clone();
-                let mut root = parse_selector(&selector);
+                let mut root = match parse_selector(&selector) {
+                    Ok(r) => r,
+                    Err(e) => {
+                        error = Some(e);
+                        break;
+                    }
+                };
                 for sel in root.selectors.iter_mut() {
                     localize_selector(sel, original_css, &mut exports, &mut error);
                 }

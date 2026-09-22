@@ -102,7 +102,7 @@ Three public Vue codebases, checked the same way:
 | --- | --- | --- |
 | [elk-zone/elk](https://github.com/elk-zone/elk) | 264 | 264 |
 | [vuetifyjs/vuetify](https://github.com/vuetifyjs/vuetify) | 1264 | 1263 |
-| [youzan/vant](https://github.com/youzan/vant) | 128 | 127 |
+| [youzan/vant](https://github.com/youzan/vant) | 128 | 128 |
 
 ```bash
 git clone --depth 1 https://github.com/elk-zone/elk /tmp/elk
@@ -113,9 +113,8 @@ cargo test --test conformance ugc_vue_local  # or: cargo run --example triage --
 `examples/triage.rs` replays such a corpus and groups the divergences by kind,
 which is the quicker way in when a fresh tree turns some up.
 
-The two misses are both `lang="sass"`: dart-sass drops blank lines inside an
-unknown at-rule's prelude where `grass` keeps them, and rejects a `/` that
-`grass` accepts.
+The one miss is `lang="sass"`: dart-sass drops blank lines inside an unknown
+at-rule's prelude where `grass` keeps them.
 
 ## Known divergences
 

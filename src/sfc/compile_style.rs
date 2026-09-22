@@ -101,7 +101,14 @@ pub fn compile_style(options: StyleCompileOptions) -> StyleCompileResult {
     }
     css_vars_plugin(&mut tree, &short_id, options.is_prod);
     if options.scoped {
-        scoped_plugin(&mut tree, &long_id);
+        if let Err(e) = scoped_plugin(&mut tree, &long_id) {
+            errors.push(StyleError::plain(e));
+            return StyleCompileResult {
+                code: String::new(),
+                errors,
+                modules: None,
+            };
+        }
     }
     let mut modules = None;
     if options.modules {
