@@ -61,7 +61,7 @@ its quirks are reproduced, because the output has to match byte for byte.
 
 `cargo run --release --example bench -- <dir>` compiles every `.vue` under `dir` through
 `ugc::compile_vue` and lists the slowest files; `PAR=1` also runs it on every core, the way
-ugc-source-compiler does. On a 2,725-file, 41 MB production tree (M-series, 8P+2E): 3.0 s on one
+ugc-source-compiler does. On a 2,725-file, 41 MB production tree (M-series, 8P+2E): 2.8 s on one
 thread, ~0.5 s on ten. The crate links `swc_malloc`, which sets the process-wide allocator
 (mimalloc) — worth ~35% single-threaded and most of the multi-core scaling.
 

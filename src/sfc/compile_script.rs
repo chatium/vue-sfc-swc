@@ -10,7 +10,7 @@ use crate::core::options::{BindingMetadata, BindingType};
 
 use super::parse::{SfcBlock, SfcDescriptor};
 use super::script::context::{
-    ImportBinding, ScriptCompileContext, ScriptCompileOptions, utf16_to_byte,
+    ImportBinding, ScriptAsts, ScriptCompileContext, ScriptCompileOptions, utf16_to_byte,
 };
 use super::script::defines::*;
 use super::script::import_usage_check::analyze_template;
@@ -330,6 +330,17 @@ pub fn compile_script(
     arena: &Arena,
     options: ScriptCompileOptions,
 ) -> Result<ScriptBlockResult, String> {
+    compile_script_with(sfc, arena, &ScriptAsts::new(), options)
+}
+
+/// `compile_script` reusing `asts`, which a caller compiling one descriptor
+/// more than once shares across the calls.
+pub fn compile_script_with(
+    sfc: &SfcDescriptor,
+    arena: &Arena,
+    asts: &ScriptAsts,
+    options: ScriptCompileOptions,
+) -> Result<ScriptBlockResult, String> {
     let script = sfc.script.clone();
     let script_setup = sfc.script_setup.clone();
     let source = sfc.source.clone();
@@ -367,7 +378,7 @@ pub fn compile_script(
                 imports: Vec::new(),
             });
         }
-        let mut ctx = ScriptCompileContext::new(sfc, options)?;
+        let mut ctx = ScriptCompileContext::new(sfc, asts, options)?;
         let r = process_normal_script(&mut ctx, &scope_id);
         return Ok(ScriptBlockResult {
             block: r.block,
@@ -388,7 +399,7 @@ pub fn compile_script(
     }
 
     let script_setup = script_setup.unwrap();
-    let mut ctx = ScriptCompileContext::new(sfc, options.clone())?;
+    let mut ctx = ScriptCompileContext::new(sfc, asts, options.clone())?;
     collect_type_decls(&mut ctx);
 
     let mut script_bindings = Bindings::new();

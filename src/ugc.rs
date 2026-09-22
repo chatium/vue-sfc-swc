@@ -1,12 +1,12 @@
 //! The exact pipeline `@chatium/ugc-source-compiler`'s `helper.cjs` runs for a
 //! `.vue` file, as a single call.
 
-use crate::sfc::compile_script::compile_script;
+use crate::sfc::compile_script::compile_script_with;
 use crate::sfc::compile_style::{StyleCompileOptions, compile_style};
 use crate::sfc::compile_template::{TemplateCompileOptions, compile_template_ast};
 use crate::sfc::parse::{AttrValue, SfcParseOptions, parse};
 use crate::sfc::rewrite_default::rewrite_default;
-use crate::sfc::script::context::ScriptCompileOptions;
+use crate::sfc::script::context::{ScriptAsts, ScriptCompileOptions};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VuePosition {
@@ -97,12 +97,16 @@ pub fn compile_vue(source: &str, path: &str) -> Result<VueOutput, VueFailure> {
         .map(|l| l.starts_with("ts"))
         .unwrap_or(false);
 
+    // both script compiles below read the same blocks, so they share one parse
+    let script_asts = ScriptAsts::new();
+
     // `logic`: the script compiled without an inline template
     let mut logic = String::from("// @shared\n");
     if d.script.is_some() || d.script_setup.is_some() {
-        match compile_script(
+        match compile_script_with(
             d,
             &parsed.arena,
+            &script_asts,
             ScriptCompileOptions {
                 id: "someid".to_string(),
                 ..Default::default()
@@ -215,9 +219,10 @@ pub fn compile_vue(source: &str, path: &str) -> Result<VueOutput, VueFailure> {
     let mut code = String::from("const __sfc__ = {};");
     let mut bindings: Option<crate::core::options::BindingMetadata> = None;
     if d.script.is_some() || d.script_setup.is_some() {
-        match compile_script(
+        match compile_script_with(
             d,
             &parsed.arena,
+            &script_asts,
             ScriptCompileOptions {
                 id: id.clone(),
                 inline_template: true,

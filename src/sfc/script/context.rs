@@ -1,6 +1,7 @@
 //! Port of `compiler-sfc/src/script/context.ts`.
 
 use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, OnceLock};
 
 use swc_core::ecma::ast::*;
 
@@ -45,13 +46,77 @@ pub struct PropsDestructureBinding {
     pub default: Option<Box<Expr>>,
 }
 
+type ParsedBlocks = (Option<Arc<Module>>, Option<Arc<Module>>);
+
+/// The parsed `<script>` and `<script setup>`. The parse depends on those
+/// blocks alone, so one `ScriptAsts` can serve every `compile_script_with`
+/// call over the same descriptor. It parses on first use and keeps a parse
+/// error to return again, so a call that never needs the AST (a non-JS
+/// `lang`) never parses.
+#[derive(Default)]
+pub struct ScriptAsts(OnceLock<Result<ParsedBlocks, String>>);
+
+impl ScriptAsts {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// `descriptor` must be the one every call pairs this with
+    fn get(&self, descriptor: &SfcDescriptor) -> Result<ParsedBlocks, String> {
+        self.0.get_or_init(|| parse_blocks(descriptor)).clone()
+    }
+}
+
+fn parse_blocks(descriptor: &SfcDescriptor) -> Result<ParsedBlocks, String> {
+    let script_lang = descriptor.script.as_ref().and_then(|s| s.lang.clone());
+    let setup_lang = descriptor.script_setup.as_ref().and_then(|s| s.lang.clone());
+    let is_ts = is_ts(&script_lang) || is_ts(&setup_lang);
+    let source = &descriptor.source;
+    // `resolveParserPlugins` enables TypeScript for ts/tsx and JSX for
+    // jsx/tsx blocks
+    let is_jsx = is_jsx_lang(&script_lang) || is_jsx_lang(&setup_lang);
+    let parse = |content: &str, block_start: usize| -> Result<Module, String> {
+        #[cfg(test)]
+        tests::SCRIPT_PARSES.with(|c| c.set(c.get() + 1));
+        crate::core::jsparse::parse_module_with_pos(content, is_ts, is_jsx).map_err(
+            |(msg, pos)| {
+                // `parse()` in compileScript re-throws babel errors with
+                // the block-relative `(line:col)` and a frame over the SFC
+                let (line, col) = line_col(content, pos);
+                let at = byte_to_utf16(source, block_start + pos);
+                format!(
+                    "[vue/compiler-sfc] {msg} ({line}:{col})\n\n{}\n{}",
+                    descriptor.filename,
+                    crate::core::codeframe::generate_code_frame(source, at, at + 1)
+                )
+            },
+        )
+    };
+
+    let script_ast = match &descriptor.script {
+        Some(s) => {
+            let start = utf16_to_byte(source, s.loc.start.offset.max(0) as usize);
+            Some(Arc::new(parse(&s.content, start)?))
+        }
+        None => None,
+    };
+    let script_setup_ast = match &descriptor.script_setup {
+        Some(s) => {
+            let start = utf16_to_byte(source, s.loc.start.offset.max(0) as usize);
+            Some(Arc::new(parse(&s.content, start)?))
+        }
+        None => None,
+    };
+    Ok((script_ast, script_setup_ast))
+}
+
 pub struct ScriptCompileContext {
     pub is_js: bool,
     pub is_ts: bool,
     pub is_ce: bool,
 
-    pub script_ast: Option<Module>,
-    pub script_setup_ast: Option<Module>,
+    pub script_ast: Option<Arc<Module>>,
+    pub script_setup_ast: Option<Arc<Module>>,
 
     pub source: String,
     pub filename: String,
@@ -135,6 +200,7 @@ pub fn utf16_to_byte(source: &str, utf16_offset: usize) -> usize {
 impl ScriptCompileContext {
     pub fn new(
         descriptor: &SfcDescriptor,
+        asts: &ScriptAsts,
         options: ScriptCompileOptions,
     ) -> Result<Self, String> {
         let script_lang = descriptor.script.as_ref().and_then(|s| s.lang.clone());
@@ -157,36 +223,7 @@ impl ScriptCompileContext {
             .map(|s| utf16_to_byte(&source, s.loc.end.offset.max(0) as usize))
             .unwrap_or(0);
 
-        // `resolveParserPlugins` enables TypeScript for ts/tsx and JSX for
-        // jsx/tsx blocks
-        let is_jsx = is_jsx_lang(&script_lang) || is_jsx_lang(&setup_lang);
-        let parse = |content: &str, block_start: usize| -> Result<Module, String> {
-            crate::core::jsparse::parse_module_with_pos(content, is_ts, is_jsx).map_err(
-                |(msg, pos)| {
-                    // `parse()` in compileScript re-throws babel errors with
-                    // the block-relative `(line:col)` and a frame over the SFC
-                    let (line, col) = line_col(content, pos);
-                    let at = byte_to_utf16(&source, block_start + pos);
-                    format!(
-                        "[vue/compiler-sfc] {msg} ({line}:{col})\n\n{}\n{}",
-                        descriptor.filename,
-                        crate::core::codeframe::generate_code_frame(&source, at, at + 1)
-                    )
-                },
-            )
-        };
-
-        let script_ast = match &descriptor.script {
-            Some(s) => {
-                let start = utf16_to_byte(&source, s.loc.start.offset.max(0) as usize);
-                Some(parse(&s.content, start)?)
-            }
-            None => None,
-        };
-        let script_setup_ast = match &descriptor.script_setup {
-            Some(s) => Some(parse(&s.content, start_offset)?),
-            None => None,
-        };
+        let (script_ast, script_setup_ast) = asts.get(descriptor)?;
 
         Ok(ScriptCompileContext {
             is_js,
@@ -310,4 +347,23 @@ fn line_col(src: &str, pos: usize) -> (usize, usize) {
     let line = head.matches('\n').count() + 1;
     let col = head.rsplit('\n').next().unwrap_or("").chars().count();
     (line, col)
+}
+
+#[cfg(test)]
+mod tests {
+    thread_local! {
+        pub(super) static SCRIPT_PARSES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    }
+
+    /// `compile_vue` compiles the script twice (for `logic`, then inline); the
+    /// blocks are the same both times, so each is parsed once
+    #[test]
+    fn compile_vue_parses_each_script_block_once() {
+        let src = "<script>export const a = 1</script>\n\
+                   <script setup>\nconst b = a\n</script>\n\
+                   <template><div>{{ b }}</div></template>";
+        SCRIPT_PARSES.with(|c| c.set(0));
+        crate::ugc::compile_vue(src, "a.vue").unwrap();
+        assert_eq!(SCRIPT_PARSES.with(|c| c.get()), 2);
+    }
 }
