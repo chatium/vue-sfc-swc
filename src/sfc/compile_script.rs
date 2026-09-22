@@ -41,7 +41,8 @@ fn is_static_node(node: &Expr) -> bool {
         Expr::Seq(s) => s.exprs.iter().all(|e| is_static_node(e)),
         Expr::Tpl(t) => t.exprs.iter().all(|e| is_static_node(e)),
         Expr::Paren(p) => is_static_node(&p.expr),
-        Expr::Lit(_) => true,
+        // the literal kinds `isStaticNode` lists: a regex is not one of them
+        Expr::Lit(l) => !matches!(l, Lit::Regex(_) | Lit::JSXText(_)),
         _ => false,
     }
 }

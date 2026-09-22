@@ -95,6 +95,8 @@ pub struct ScriptCompileContext {
     /// local type declarations available to `resolveType`
     pub type_decls: HashMap<String, TypeDecl>,
     pub errors: Vec<String>,
+    /// `inferRuntimeType` tolerates an unresolvable `extends`
+    pub silent_on_extends_failure: bool,
     pub warnings: Vec<String>,
     pub seen_helpers: HashSet<String>,
 }
@@ -217,6 +219,7 @@ impl ScriptCompileContext {
             descriptor: descriptor.clone(),
             type_decls: HashMap::new(),
             errors: Vec::new(),
+            silent_on_extends_failure: false,
             warnings: Vec::new(),
             seen_helpers: HashSet::new(),
         })

@@ -215,28 +215,69 @@ fn resolve_interface_members(
 ) -> Result<ResolvedElements, String> {
     let mut base = type_elements_to_map(ctx, &node.body.body)?;
     for ext in &node.extends {
-        if let Expr::Ident(i) = &*ext.expr {
-            let name = i.sym.to_string();
-            if let Some(e) =
-                imported_type_error(ctx, &name, (i.span.lo.0 as usize, i.span.hi.0 as usize))
-            {
-                return Err(e);
-            }
-            if let Some(decl) = ctx.type_decls.get(&name).cloned() {
-                let resolved = match decl {
-                    TypeDecl::Interface(i) => resolve_interface_members(ctx, &i)?,
-                    TypeDecl::Alias(a) => resolve_type_elements(ctx, &a.type_ann)?,
-                    TypeDecl::Enum(_) => continue,
-                };
+        let span = (ext.span.lo.0 as usize, ext.span.hi.0 as usize);
+        // `/* @vue-ignore */ Base` resolves to nothing instead of failing
+        if has_vue_ignore(ctx, span.0) {
+            continue;
+        }
+        let resolved = resolve_extends(ctx, ext);
+        match resolved {
+            Ok(resolved) => {
                 for (k, v) in resolved.props {
                     if !base.props.iter().any(|(bk, _)| *bk == k) {
                         base.props.push((k, v));
                     }
                 }
+                base.calls.extend(resolved.calls);
+            }
+            Err(_) if ctx.silent_on_extends_failure => {}
+            Err(_) => {
+                return Err(ctx.error_at(
+                    "Failed to resolve extends base type.\n\
+                     If this previously worked in 3.2, you can instruct the compiler to \
+                     ignore this extend by adding /* @vue-ignore */ before it, for example:\n\
+                     \ninterface Props extends /* @vue-ignore */ Base {}\n\
+                     \nNote: both in 3.2 or with the ignore, the properties in the base type \
+                     are treated as fallthrough attrs at runtime.",
+                    span,
+                    true,
+                ));
             }
         }
     }
     Ok(base)
+}
+
+fn resolve_extends(
+    ctx: &mut ScriptCompileContext,
+    ext: &TsExprWithTypeArgs,
+) -> Result<ResolvedElements, String> {
+    let Expr::Ident(i) = &*ext.expr else {
+        return Err("Unresolvable type reference or unsupported built-in utility type".into());
+    };
+    let name = i.sym.to_string();
+    let span = (i.span.lo.0 as usize, i.span.hi.0 as usize);
+    if let Some(e) = imported_type_error(ctx, &name, span) {
+        return Err(e);
+    }
+    match ctx.type_decls.get(&name).cloned() {
+        Some(TypeDecl::Interface(i)) => resolve_interface_members(ctx, &i),
+        Some(TypeDecl::Alias(a)) => resolve_type_elements(ctx, &a.type_ann),
+        _ => Err("Unresolvable type reference or unsupported built-in utility type".into()),
+    }
+}
+
+/// `hasVueIgnore`: the comment immediately before the node
+fn has_vue_ignore(ctx: &ScriptCompileContext, start: usize) -> bool {
+    let head = ctx.get_string(0, start, true);
+    let head = head.trim_end();
+    let Some(body) = head.strip_suffix("*/") else {
+        return false;
+    };
+    match body.rfind("/*") {
+        Some(i) => body[i + 2..].contains("@vue-ignore"),
+        None => false,
+    }
 }
 
 fn type_elements_to_map(
@@ -361,6 +402,13 @@ pub fn infer_runtime_type_of_prop(ctx: &mut ScriptCompileContext, prop: &PropSig
 }
 
 pub fn infer_runtime_type(ctx: &mut ScriptCompileContext, node: &TsType) -> Vec<String> {
+    let prev_silent = std::mem::replace(&mut ctx.silent_on_extends_failure, true);
+    let r = infer_runtime_type_inner(ctx, node);
+    ctx.silent_on_extends_failure = prev_silent;
+    r
+}
+
+fn infer_runtime_type_inner(ctx: &mut ScriptCompileContext, node: &TsType) -> Vec<String> {
     match node {
         TsType::TsKeywordType(k) => match k.kind {
             TsKeywordTypeKind::TsStringKeyword => vec!["String".into()],
@@ -501,12 +549,8 @@ fn flatten_types(ctx: &mut ScriptCompileContext, types: &[Box<TsType>]) -> Vec<S
             }
         }
     }
-    if out.len() > 1 {
-        out.retain(|t| t != UNKNOWN_TYPE);
-        if out.is_empty() {
-            out.push(UNKNOWN_TYPE.into());
-        }
-    }
+    // `flattenTypes` only dedupes; dropping the unknown is the intersection
+    // branch's job, and a union keeps it so the prop degrades to `null`
     out
 }
 

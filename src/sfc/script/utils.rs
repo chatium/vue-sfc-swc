@@ -64,14 +64,7 @@ pub fn to_runtime_type_string(types: &[String]) -> String {
 }
 
 pub fn unwrap_ts_node(e: &Expr) -> &Expr {
-    match e {
-        Expr::TsAs(t) => unwrap_ts_node(&t.expr),
-        Expr::TsTypeAssertion(t) => unwrap_ts_node(&t.expr),
-        Expr::TsNonNull(t) => unwrap_ts_node(&t.expr),
-        Expr::TsInstantiation(t) => unwrap_ts_node(&t.expr),
-        Expr::TsSatisfies(t) => unwrap_ts_node(&t.expr),
-        other => other,
-    }
+    crate::core::utils::unwrap_ts_node(e)
 }
 
 const PROP_NAME_ESCAPE_SYMBOLS: &str = " !\"#$%&'()*+,./:;<=>?@[\\]^`{|}~-";

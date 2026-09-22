@@ -447,10 +447,12 @@ fn has_prop(a: &Arena, prop: NodeId, props: NodeId) -> bool {
     false
 }
 
-fn unwrap_ts_node(e: &swc_core::ecma::ast::Expr) -> &swc_core::ecma::ast::Expr {
+pub fn unwrap_ts_node(e: &swc_core::ecma::ast::Expr) -> &swc_core::ecma::ast::Expr {
     use swc_core::ecma::ast::Expr;
     match e {
         Expr::TsAs(t) => unwrap_ts_node(&t.expr),
+        // Babel spells `x as const` as a TSAsExpression
+        Expr::TsConstAssertion(t) => unwrap_ts_node(&t.expr),
         Expr::TsTypeAssertion(t) => unwrap_ts_node(&t.expr),
         Expr::TsNonNull(t) => unwrap_ts_node(&t.expr),
         Expr::TsInstantiation(t) => unwrap_ts_node(&t.expr),

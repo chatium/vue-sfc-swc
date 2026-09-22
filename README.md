@@ -92,6 +92,27 @@ successful compile is byte-identical, and the 17 remaining cases are invalid inp
 diagnostic's wording differs (that corpus is not fixed, so `ugc_vue_local` reports those rather
 than failing on them).
 
+Three public Vue codebases, checked the same way:
+
+| repo | files | result |
+| --- | --- | --- |
+| [elk-zone/elk](https://github.com/elk-zone/elk) | 264 | 264 |
+| [vuetifyjs/vuetify](https://github.com/vuetifyjs/vuetify) | 1264 | 1263 |
+| [youzan/vant](https://github.com/youzan/vant) | 128 | 127 |
+
+```bash
+git clone --depth 1 https://github.com/elk-zone/elk /tmp/elk
+node tools/check-dir.mjs /tmp/elk            # writes tests/fixtures/ugc-vue-local.json
+cargo test --test conformance ugc_vue_local  # or: cargo run --example triage -- <corpus.json>
+```
+
+`examples/triage.rs` replays such a corpus and groups the divergences by kind,
+which is the quicker way in when a fresh tree turns some up.
+
+The two misses are both `lang="sass"`: dart-sass drops blank lines inside an
+unknown at-rule's prelude where `grass` keeps them, and rejects a `/` that
+`grass` accepts.
+
 ## Known divergences
 
 Six `ugc-vue` cases differ, all of them the *wording* of a diagnostic for invalid input; the stage,
