@@ -90,7 +90,8 @@ async function compileVue({ source, path }) {
   const id = hash.slice(0, 4) + hash.slice(-4)
   const scoped = d.styles.some(style => style.scoped)
   const templateFailed = allErrors.length > 0
-  let styles = ''
+  // each `<style>`'s CSS, in source order; how it reaches the DOM is the consumer's call
+  const styles = []
   const modules = {}
   for (const style of d.styles) {
     if (!style.content) continue
@@ -107,9 +108,7 @@ async function compileVue({ source, path }) {
     allErrors.push(...result.errors)
     if (style.module && result.modules)
       modules[typeof style.module === 'string' ? style.module : '$style'] = result.modules
-    styles += `\n;(function() { const style = document.createElement('style'); style.innerHTML = ${JSON.stringify(
-      result.code,
-    )}; document.head.appendChild(style); })();`
+    styles.push(result.code)
   }
   try {
     vueErrors(path, allErrors)
@@ -144,8 +143,7 @@ async function compileVue({ source, path }) {
       compiled.code.replace(/\nexport (function|const) render/, '$1 __sfc__render') +
       '\n__sfc__.render = __sfc__render;'
   }
-  code += styles
   if (scoped) code += `\n(__sfc__.__vccOpts || __sfc__).__scopeId = ${JSON.stringify('data-v-' + id)};`
   if (Object.keys(modules).length) code += `\n(__sfc__.__vccOpts || __sfc__).__cssModules = ${JSON.stringify(modules)};`
-  return { logic, template, code: '// @shared\n' + code + '\nexport default __sfc__;' }
+  return { logic, template, code: '// @shared\n' + code + '\nexport default __sfc__;', styles }
 }

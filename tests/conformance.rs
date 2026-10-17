@@ -953,6 +953,7 @@ const UGC_DIAGNOSTIC_DIVERGENCE: &[&str] = &[
     "const broken: = 1",         // babel: bare "Unexpected token"
     "$x:</style>",               // dart-sass points one column further right
     "uppercase-rocks",           // babel: "Missing semicolon."
+    "=> <div>x</div>",           // rewriteDefault: babel has no jsx plugin there
 ];
 
 /// End-to-end: the exact pipeline `helper.cjs` runs for `.vue` files.
@@ -976,6 +977,13 @@ fn ugc_vue_local() {
     // this corpus is whatever tree the fixture was generated from, so the
     // diagnostic-wording divergences cannot be listed by hand
     run_ugc_cases("ugc-vue-local", serde_json::from_str(&text).unwrap(), false);
+}
+
+/// `styles` as the reference helper returns it: one CSS string per `<style>`
+fn styles_match(got: &[String], want: &Value) -> bool {
+    want.as_array().is_some_and(|w| {
+        w.len() == got.len() && w.iter().zip(got).all(|(w, g)| w.as_str() == Some(g.as_str()))
+    })
 }
 
 fn run_ugc_cases(name: &str, cases: Vec<Value>, strict_errors: bool) {
@@ -1014,6 +1022,11 @@ fn run_ugc_cases(name: &str, cases: Vec<Value>, strict_errors: bool) {
                     failed.push((
                         source.to_string(),
                         format!("code:\ngot  {:?}\nwant {:?}", r.code, want_code),
+                    ));
+                } else if !styles_match(&r.styles, &out["styles"]) {
+                    failed.push((
+                        source.to_string(),
+                        format!("styles:\ngot  {:?}\nwant {}", r.styles, out["styles"]),
                     ));
                 } else {
                     ok += 1;

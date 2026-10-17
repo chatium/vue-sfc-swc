@@ -16,7 +16,10 @@ Goal: byte-identical output to the JS compiler for the API surface that package 
 | `@vue/compiler-ssr`'s `compile` | `ssr::compile` |
 
 `ugc::compile_vue(source, path)` is the whole `helper.cjs` `.vue` pipeline in one call, returning
-the same `{ logic, template, code }` (or the same build error) the Node helper produces.
+the same `{ logic, template, code, styles }` (or the same build error) the Node helper produces.
+`styles` is each non-empty `<style>` block's compiled CSS, in source order; `code` does not inject
+it, so how the CSS reaches the page (a `<style>` tag, a `.css` file next to a chunk) is the
+consumer's call.
 
 ## Using it
 
@@ -26,7 +29,7 @@ vue-sfc = { git = "ssh://git@github.com/chatium/vue-sfc-swc.git" }
 ```
 
 ```rust
-let r = vue_sfc::ugc::compile_vue(source, path)?;   // { logic, template, code }
+let r = vue_sfc::ugc::compile_vue(source, path)?;   // { logic, template, code, styles }
 ```
 
 It pins the same `swc_core` (`=80.0.0`) and toolchain (1.98.1) as
@@ -96,7 +99,7 @@ Current state — every case byte-identical:
 | `compile-style` | 448 |
 | `compile-template-opts` / `compile-script-opts` / `compile-style-opts` | 476 |
 | `postcss-roundtrip` / `selector-scoped` / `css-modules` / `sass` / `rewrite-default` | 158 |
-| `ugc-vue` (end to end) | 288 |
+| `ugc-vue` (end to end) | 290 |
 
 The `*-opts` suites vary the *options* rather than the input — the same sources compiled with
 `isProd`, `scoped`, `slotted`, `ssr`, `inlineTemplate`, `genDefaultAs`, `customElement` and CSS
@@ -156,7 +159,7 @@ at-rule's prelude, and re-indents a multi-line comment's continuation lines.
 
 ## Known divergences
 
-Six `ugc-vue` cases differ, all of them the *wording* of a diagnostic for invalid input; the stage,
+Nine `ugc-vue` cases differ, all of them the *wording* of a diagnostic for invalid input; the stage,
 position and code frame match. They are listed in `UGC_DIAGNOSTIC_DIVERGENCE` in
 `tests/conformance.rs`:
 

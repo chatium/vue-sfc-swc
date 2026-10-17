@@ -41,6 +41,9 @@ pub struct VueOutput {
     pub logic: String,
     pub template: String,
     pub code: String,
+    /// each non-empty `<style>`'s compiled CSS, in source order; `code` does
+    /// not inject them, how they reach the DOM is the consumer's call
+    pub styles: Vec<String>,
     pub modules: Vec<(String, Vec<(String, String)>)>,
 }
 
@@ -166,7 +169,7 @@ pub fn compile_vue(source: &str, path: &str) -> Result<VueOutput, VueFailure> {
     let id = sha1_id(source);
     let scoped = d.styles.iter().any(|s| s.scoped);
 
-    let mut styles = String::new();
+    let mut styles: Vec<String> = Vec::new();
     let mut modules: Vec<(String, Vec<(String, String)>)> = Vec::new();
     for style in &d.styles {
         if style.content.is_empty() {
@@ -197,10 +200,7 @@ pub fn compile_vue(source: &str, path: &str) -> Result<VueOutput, VueFailure> {
             };
             modules.push((name, m));
         }
-        styles.push_str(&format!(
-            "\n;(function() {{ const style = document.createElement('style'); style.innerHTML = {}; document.head.appendChild(style); }})();",
-            serde_json::to_string(&r.code).unwrap()
-        ));
+        styles.push(r.code);
     }
 
     if !all_errors.is_empty() {
@@ -307,7 +307,6 @@ pub fn compile_vue(source: &str, path: &str) -> Result<VueOutput, VueFailure> {
         code.push_str(&format!("\n{replaced}\n__sfc__.render = __sfc__render;"));
     }
 
-    code.push_str(&styles);
     if scoped {
         code.push_str(&format!(
             "\n(__sfc__.__vccOpts || __sfc__).__scopeId = {};",
@@ -333,6 +332,7 @@ pub fn compile_vue(source: &str, path: &str) -> Result<VueOutput, VueFailure> {
         logic,
         template: template_code,
         code: format!("// @shared\n{code}\nexport default __sfc__;"),
+        styles,
         modules,
     })
 }
