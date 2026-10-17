@@ -83,6 +83,10 @@ pub fn parse_module_with_pos(
                 return Err(at(e));
             }
             super::spans::rebase_module(&mut module, base);
+            // Babel's parser also rejects a redeclared binding; swc's does not
+            if let Some(e) = super::redeclare::first_redeclaration(&module) {
+                return Err(e);
+            }
             Ok(module)
         }
         Err(e) => Err(at(e)),

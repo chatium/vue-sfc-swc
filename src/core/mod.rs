@@ -9,6 +9,7 @@ pub mod jsparse;
 pub mod options;
 pub mod parser;
 pub mod patch_flags;
+pub mod redeclare;
 pub mod serialize;
 pub mod spans;
 pub mod transform;
