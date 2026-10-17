@@ -53,5 +53,9 @@
  "<template><div/></template>\n<style lang=\"sass\" scoped>\n.x { b: #00000066; c: #fff8 }\n#abcd { d: #f00f }\n</style>",
  "<template><div/></template>\n<style lang=\"scss\">\n@media (max-width: 1px) {\n  .a,\n  .b { x: 1 }\n  .c { .d,\n .e { y: 2 } }\n}\n.f { @media (min-width: 2px) { .g,\n.h { z: 3 } } }\n@supports (a: b) { @media print { .i,\n        .j { w: 4 } } }\n.k,\n.l { v: 5 }\n.m { .n,\n.o { u: 6 } }\n</style>",
  "<template><div/></template>\n<style lang=\"scss\" scoped>\n@media (max-width: 1px) {\n  .a,\n  .b { x: 1 }\n  .c { .d,\n .e { y: 2 } }\n}\n.f { @media (min-width: 2px) { .g,\n.h { z: 3 } } }\n@supports (a: b) { @media print { .i,\n        .j { w: 4 } } }\n.k,\n.l { v: 5 }\n.m { .n,\n.o { u: 6 } }\n</style>",
- "<template><div/></template>\n<style lang=\"scss\">\na {\n  h1: hsla(0, 0%, 0%, 0.05);\n  h2: hsl(120, 50%, 50%);\n  h3: hsla(120deg, 50%, 50%, 0.5);\n  h4: hsl(120 50% 50% / 0.5);\n  h5: hsla(0, 0%, 0%, 1);\n  h6: hsl(0.5turn, 10%, 10%);\n  h7: hsla(10, 0%, 100%, 0);\n  h10: 1px solid hsla(200, 10%, 20%, .3), 0 0 hsl(-30, 5%, 5%);\n  h11: hsl(var(--h), 50%, 50%);\n  h12: hsl(calc(10deg + 5deg), 50%, 50%);\n  h14: \"hsl(10deg, 1%, 1%)\";\n  --h15: hsl(10deg, 1%, 1%);\n}\n</style>"
+ "<template><div/></template>\n<style lang=\"scss\">\na {\n  h1: hsla(0, 0%, 0%, 0.05);\n  h2: hsl(120, 50%, 50%);\n  h3: hsla(120deg, 50%, 50%, 0.5);\n  h4: hsl(120 50% 50% / 0.5);\n  h5: hsla(0, 0%, 0%, 1);\n  h6: hsl(0.5turn, 10%, 10%);\n  h7: hsla(10, 0%, 100%, 0);\n  h10: 1px solid hsla(200, 10%, 20%, .3), 0 0 hsl(-30, 5%, 5%);\n  h11: hsl(var(--h), 50%, 50%);\n  h12: hsl(calc(10deg + 5deg), 50%, 50%);\n  h14: \"hsl(10deg, 1%, 1%)\";\n  --h15: hsl(10deg, 1%, 1%);\n}\n</style>",
+ "<script setup lang=\"ts\"></script>\n\n<script lang=\"ts\">\nexport default ({});\n\nconsole.log();\n</script>\n",
+ "<script setup lang=\"ts\">\n// @ts-expect-error\ndefineEmits<{()}>();\n</script>",
+ "<script>\nexport default (\n  { a: 1 }\n)\n</script>",
+ "<script setup lang=\"ts\">\ndefineEmits<{ (): void; (e: 'a'): void }>()\n</script>"
 ]

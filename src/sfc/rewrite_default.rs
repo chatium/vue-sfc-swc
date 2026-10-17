@@ -81,7 +81,13 @@ pub fn rewrite_default_ast(body: &[ModuleItem], s: &mut MagicString, as_: &str) 
             }
             ModuleItem::ModuleDecl(ModuleDecl::ExportDefaultExpr(node)) => {
                 let start = node.span.lo.0 as usize;
-                let decl_start = node.expr.span().lo.0 as usize;
+                // Babel has no node for the parens, so `declaration.start` is
+                // the expression's own and the overwrite takes `(` with it
+                let mut expr = &*node.expr;
+                while let Expr::Paren(p) = expr {
+                    expr = &p.expr;
+                }
+                let decl_start = expr.span().lo.0 as usize;
                 s.overwrite(start, decl_start, &format!("const {as_} = "));
             }
             ModuleItem::ModuleDecl(ModuleDecl::ExportNamed(node)) => {

@@ -548,7 +548,13 @@ fn extract_event_names(
 ) {
     let ident = match param {
         Some(TsFnParam::Ident(i)) => i,
-        _ => return,
+        Some(_) => return,
+        // `eventName.type` on a signature without params throws in the JS
+        None => {
+            ctx.errors
+                .push("Cannot read properties of undefined (reading 'type')".to_string());
+            return;
+        }
     };
     let ann = match &ident.type_ann {
         Some(a) => a.type_ann.clone(),
