@@ -312,16 +312,8 @@ fn normalize_style(v: &JsValue) -> Option<JsValue> {
 }
 
 fn parse_string_style(css: &str) -> Vec<(String, JsValue)> {
-    let mut ret = Vec::new();
-    for item in css.split(';') {
-        if item.is_empty() {
-            continue;
-        }
-        if let Some(idx) = item.find(':') {
-            let key = item[..idx].trim().to_string();
-            let value = item[idx + 1..].trim().to_string();
-            ret.push((key, JsValue::Str(value)));
-        }
-    }
-    ret
+    crate::dom::transforms::transform_style::string_style_entries(css)
+        .into_iter()
+        .map(|(k, v)| (k, JsValue::Str(v)))
+        .collect()
 }

@@ -636,5 +636,9 @@
  "<Comp><template #a>x</template>implicit</Comp>",
  "<Comp><slot/></Comp>",
  "<Comp><template #a><slot name=\"a\"/></template></Comp>",
- "<div v-slot=\"a\">x</div>"
+ "<div v-slot=\"a\">x</div>",
+ "<div style=\"padding-bottom: 56.25%; /* 16:9 aspect ratio */\">x</div>",
+ "<div style=\"a: 1; /* x; y: z */ b: 2\"></div>",
+ "<div style=\"color: red; /* c */\" :style=\"s\"></div>",
+ "<div><span style=\"a: 1 /* :) */; b: url(x;y)\"><b>x</b><b>x</b><b>x</b><b>x</b><b>x</b><b>x</b><b>x</b><b>x</b><b>x</b><b>x</b><b>x</b><b>x</b><b>x</b><b>x</b><b>x</b><b>x</b><b>x</b><b>x</b><b>x</b><b>x</b><b>x</b><b>x</b><b>x</b><b>x</b><b>x</b></span></div>"
 ]

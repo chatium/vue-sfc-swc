@@ -43,18 +43,44 @@ pub fn transform_style(node: NodeId, ctx: &mut TransformContext) {
 
 /// `parseStringStyle` from `@vue/shared`
 fn parse_string_style(css: &str) -> serde_json::Map<String, serde_json::Value> {
-    let mut ret = serde_json::Map::new();
-    for item in split_style(css) {
-        if item.is_empty() {
+    string_style_entries(css)
+        .into_iter()
+        .map(|(k, v)| (k, serde_json::Value::String(v)))
+        .collect()
+}
+
+/// `parseStringStyle`'s entries in object order: comments dropped, split on
+/// `listDelimiterRE`, then each item on its first `:` with something after it
+/// (`propertyDelimiterRE = /:([^]+)/`); a repeated key keeps its first slot
+pub fn string_style_entries(css: &str) -> Vec<(String, String)> {
+    let mut ret: Vec<(String, String)> = Vec::new();
+    for item in split_style(&strip_style_comments(css)) {
+        let Some(idx) = item.find(':').filter(|&i| i + 1 < item.len()) else {
             continue;
-        }
-        if let Some(idx) = item.find(':') {
-            let key = item[..idx].trim().to_string();
-            let value = item[idx + 1..].trim().to_string();
-            ret.insert(key, serde_json::Value::String(value));
+        };
+        let key = item[..idx].trim().to_string();
+        let value = item[idx + 1..].trim().to_string();
+        match ret.iter_mut().find(|(k, _)| *k == key) {
+            Some(slot) => slot.1 = value,
+            None => ret.push((key, value)),
         }
     }
     ret
+}
+
+/// `cssText.replace(/\/\*[^]*?\*\//g, '')`
+fn strip_style_comments(css: &str) -> String {
+    let mut out = String::with_capacity(css.len());
+    let mut rest = css;
+    while let Some(open) = rest.find("/*") {
+        let Some(close) = rest[open + 2..].find("*/") else {
+            break;
+        };
+        out.push_str(&rest[..open]);
+        rest = &rest[open + 2 + close + 2..];
+    }
+    out.push_str(rest);
+    out
 }
 
 /// `listDelimiterRE = /;(?![^(]*\))/g`
