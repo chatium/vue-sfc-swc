@@ -99,7 +99,7 @@ Current state — every case byte-identical:
 | `compile-style` | 448 |
 | `compile-template-opts` / `compile-script-opts` / `compile-style-opts` | 476 |
 | `postcss-roundtrip` / `selector-scoped` / `css-modules` / `sass` / `rewrite-default` | 158 |
-| `ugc-vue` (end to end) | 290 |
+| `ugc-vue` (end to end) | 317 |
 
 The `*-opts` suites vary the *options* rather than the input — the same sources compiled with
 `isProd`, `scoped`, `slotted`, `ssr`, `inlineTemplate`, `genDefaultAs`, `customElement` and CSS
@@ -107,10 +107,12 @@ The `*-opts` suites vary the *options* rather than the input — the same source
 
 `tools/check-dir.mjs <dir>` runs the same end-to-end check over a tree of real `.vue` files without
 vendoring them — it writes `tests/fixtures/ugc-vue-local.json` (gitignored), which `ugc_vue_local`
-picks up and otherwise skips. Against 3,746 distinct `.vue` files found under `~/github`: every
-successful compile is byte-identical, and the 17 remaining cases are invalid input where only the
-diagnostic's wording differs (that corpus is not fixed, so `ugc_vue_local` reports those rather
-than failing on them).
+picks up and otherwise skips (that corpus is not fixed, so it reports diagnostic-wording
+differences rather than failing on them).
+
+The Chatium workspaces this compiler is for — 45 trees under `~/github/chatium`, 18,258 distinct
+`.vue` files — match in 18,243. The other 15 (all in muuvee) are the Sass comment placement
+below.
 
 Sixteen public Vue codebases, checked the same way — 12964 of 12966 distinct SFCs:
 
@@ -166,6 +168,17 @@ position and code frame match. They are listed in `UGC_DIAGNOSTIC_DIVERGENCE` in
 - JS syntax errors read as swc phrases them, not Babel (`Expression expected` vs
   `Unexpected reserved word 'enum'.`). Matching would mean porting Babel's parser.
 - Sass errors read as `grass` phrases them, and its caret can sit one column left of dart-sass's.
+
+Sass output goes through `grass`, rewritten where its output is known to differ from dart-sass's
+(4/8-digit hex colors, `hsl()` hues, multi-line selector lists in at-rules). What is left needs
+information grass's output no longer carries:
+
+- a `/* comment */` on the same line as the declaration or `}` before it stays on that line in
+  dart-sass; grass puts it on a line of its own;
+- a color function (`lighten`, `mix`, …) on an `hsl()` color returns `hsl()` in dart-sass and
+  hex in grass;
+- dart-sass drops blank lines inside an unknown at-rule's prelude and re-indents a multi-line
+  comment's continuation lines.
 
 `@value name from './other.css'` in a CSS module is reported as an error: resolving it means
 reading another file, and this compiler has no filesystem. So does a `defineProps<T>()` whose `T`
