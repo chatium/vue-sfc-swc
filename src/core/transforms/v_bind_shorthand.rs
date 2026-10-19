@@ -43,8 +43,8 @@ pub fn transform_v_bind_shorthand(node: NodeId, ctx: &mut TransformContext) {
                         || (c as u32) >= 0xA0
                 })
                 .unwrap_or(false);
+            let loc = ctx.a.loc(arg).clone();
             if valid {
-                let loc = ctx.a.loc(arg).clone();
                 let e = ctx.a.create_simple_expression(
                     prop_name,
                     false,
@@ -52,6 +52,10 @@ pub fn transform_v_bind_shorthand(node: NodeId, ctx: &mut TransformContext) {
                     ConstantType::NotConstant,
                 );
                 ctx.a.dir_mut(prop).exp = Some(e);
+            } else {
+                // upstream leaves `exp` unset and later throws reading its
+                // `.type`; report the attribute instead of generating `"1": `
+                ctx.error(ErrorCode::X_V_BIND_NO_EXPRESSION, Some(loc));
             }
         }
     }

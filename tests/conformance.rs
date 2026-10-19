@@ -956,6 +956,38 @@ const UGC_DIAGNOSTIC_DIVERGENCE: &[&str] = &[
     "=> <div>x</div>",           // rewriteDefault: babel has no jsx plugin there
 ];
 
+/// A `v-bind` shorthand whose name cannot be a JS identifier (`:1`, `.75`)
+/// has no expression to bind. `@vue/compiler-sfc` throws on it deeper in
+/// (`Cannot read properties of undefined (reading 'type')`, which the helper
+/// reports as a script failure with no position); the port reports a template
+/// error at the attribute instead, so it is checked here, not against the
+/// reference.
+#[test]
+fn v_bind_shorthand_without_identifier_is_a_template_error() {
+    for (template, arg) in [
+        ("<div :1 />", "1 "),
+        ("<line stroke-width=\"opacity=\".75\"\" />", "75\"\""),
+        ("<div :1x />", "1x"),
+        ("<div .75 />", "75"),
+    ] {
+        let source = format!("<template>{template}</template>\n");
+        let f = match vue_sfc::ugc::compile_vue(&source, "c.vue") {
+            Ok(r) => panic!("{template}: compiled to {:?}", r.template),
+            Err(f) => f,
+        };
+        assert!(matches!(f.stage, vue_sfc::ugc::VueStage::Template), "{template}");
+        let e = &f.errors[0];
+        assert_eq!(e.msg, "v-bind is missing expression.", "{template}");
+        let p = e.position.as_ref().expect("a position");
+        let col = source.find(&format!("{arg}")).unwrap() as i64;
+        assert_eq!((p.line, p.character), (0, col), "{template}");
+    }
+    for template in ["<div :-x />", "<div .foo />"] {
+        let source = format!("<template>{template}</template>\n");
+        assert!(vue_sfc::ugc::compile_vue(&source, "c.vue").is_ok(), "{template}");
+    }
+}
+
 /// End-to-end: the exact pipeline `helper.cjs` runs for `.vue` files.
 #[test]
 fn ugc_vue() {
