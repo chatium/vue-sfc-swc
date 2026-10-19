@@ -180,6 +180,10 @@ information grass's output no longer carries:
 - dart-sass drops blank lines inside an unknown at-rule's prelude and re-indents a multi-line
   comment's continuation lines.
 
+A `v-bind` shorthand whose name cannot start an identifier (`<div :1 />`, `<div .75 />`) is
+reported as `v-bind is missing expression.` at the attribute, a template error. The JS compiler
+throws a `TypeError` there instead, which reaches the helper as a script failure with no position.
+
 `@value name from './other.css'` in a CSS module is reported as an error: resolving it means
 reading another file, and this compiler has no filesystem. So does a `defineProps<T>()` whose `T`
 comes from an import, which is what `@vue/compiler-sfc` itself does without an `fs` option.
