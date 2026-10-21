@@ -37,6 +37,8 @@ fn main() {
                     Some("template differs".into())
                 } else if r.code != out["code"].as_str().unwrap_or("") {
                     Some("code differs".into())
+                } else if r.ssr.as_deref() != out["ssr"].as_str() {
+                    Some("ssr differs".into())
                 } else if out["styles"].as_array().is_none_or(|w| {
                     w.len() != r.styles.len()
                         || w.iter().zip(&r.styles).any(|(w, g)| w.as_str() != Some(g.as_str()))

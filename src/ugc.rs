@@ -1,10 +1,11 @@
 //! The exact pipeline `@chatium/ugc-source-compiler`'s `helper.cjs` runs for a
 //! `.vue` file, as a single call.
 
+use crate::core::ast::Arena;
 use crate::sfc::compile_script::compile_script_with;
 use crate::sfc::compile_style::{StyleCompileOptions, compile_style};
 use crate::sfc::compile_template::{TemplateCompileOptions, compile_template_ast};
-use crate::sfc::parse::{AttrValue, SfcParseOptions, parse};
+use crate::sfc::parse::{AttrValue, SfcDescriptor, SfcParseOptions, parse};
 use crate::sfc::rewrite_default::rewrite_default;
 use crate::sfc::script::context::{ScriptAsts, ScriptCompileOptions};
 
@@ -41,6 +42,9 @@ pub struct VueOutput {
     pub logic: String,
     pub template: String,
     pub code: String,
+    /// the same component compiled for `vue/server-renderer`; `None` when
+    /// only its SSR compile fails
+    pub ssr: Option<String>,
     /// each non-empty `<style>`'s compiled CSS, in source order; `code` does
     /// not inject them, how they reach the DOM is the consumer's call
     pub styles: Vec<String>,
@@ -216,22 +220,76 @@ pub fn compile_vue(source: &str, path: &str) -> Result<VueOutput, VueFailure> {
         });
     }
 
+    let component = |ssr| {
+        component_code(
+            d,
+            &parsed.arena,
+            &script_asts,
+            &logic,
+            &Component {
+                id: &id,
+                scoped,
+                modules: &modules,
+                is_ts,
+                source,
+                path,
+            },
+            ssr,
+        )
+    };
+    let code = component(false)?;
+    // not a build error: the component then renders in the browser only
+    let ssr = component(true).ok();
+
+    Ok(VueOutput {
+        logic,
+        template: template_code,
+        code,
+        ssr,
+        styles,
+        modules,
+    })
+}
+
+/// What both component compiles of one SFC share.
+struct Component<'a> {
+    id: &'a str,
+    scoped: bool,
+    modules: &'a [(String, Vec<(String, String)>)],
+    is_ts: bool,
+    source: &'a str,
+    path: &'a str,
+}
+
+/// The browser component, or with `ssr` the same component rendering to a
+/// string on the server.
+fn component_code(
+    d: &SfcDescriptor,
+    arena: &Arena,
+    script_asts: &ScriptAsts,
+    logic: &str,
+    c: &Component,
+    ssr: bool,
+) -> Result<String, VueFailure> {
+    let render = if ssr { "ssrRender" } else { "render" };
+    let path = c.path;
     let mut code = String::from("const __sfc__ = {};");
     let mut bindings: Option<crate::core::options::BindingMetadata> = None;
     if d.script.is_some() || d.script_setup.is_some() {
         match compile_script_with(
             d,
-            &parsed.arena,
-            &script_asts,
+            arena,
+            script_asts,
             ScriptCompileOptions {
-                id: id.clone(),
+                id: c.id.to_string(),
                 inline_template: true,
+                template_ssr: ssr,
                 ..Default::default()
             },
         ) {
             Ok(r) => {
                 bindings = Some(r.bindings.clone());
-                let rewritten = rewrite_default(&r.content, "__sfc__", is_ts).map_err(|e| {
+                let rewritten = rewrite_default(&r.content, "__sfc__", c.is_ts).map_err(|e| {
                     VueFailure {
                         stage: VueStage::Script,
                         errors: vec![VueError {
@@ -251,7 +309,7 @@ pub fn compile_vue(source: &str, path: &str) -> Result<VueOutput, VueFailure> {
                         msg: e,
                         position: None,
                     }],
-                    logic: Some(logic),
+                    logic: Some(logic.to_string()),
                     file_path: path.to_string(),
                 });
             }
@@ -262,20 +320,21 @@ pub fn compile_vue(source: &str, path: &str) -> Result<VueOutput, VueFailure> {
         // the render function is compiled separately and attached
         // parse errors returned above, so the fresh AST carries none
         let (t_arena, t_children) =
-            crate::sfc::compile_template::fresh_template_ast(d, &parsed.arena)
-                .unwrap_or_default();
+            crate::sfc::compile_template::fresh_template_ast(d, arena).unwrap_or_default();
         let r = compile_template_ast(
             t_arena,
             t_children,
-            source.to_string(),
+            c.source.to_string(),
             Vec::new(),
             TemplateCompileOptions {
                 filename: path.to_string(),
-                id: id.clone(),
-                scoped,
+                id: c.id.to_string(),
+                scoped: c.scoped,
+                ssr,
+                ssr_css_vars: d.css_vars.clone(),
                 binding_metadata: bindings.clone().unwrap_or_default(),
                 binding_metadata_provided: bindings.is_some(),
-                expression_plugins: if is_ts {
+                expression_plugins: if c.is_ts {
                     vec!["typescript".to_string()]
                 } else {
                     Vec::new()
@@ -303,19 +362,21 @@ pub fn compile_vue(source: &str, path: &str) -> Result<VueOutput, VueFailure> {
                 file_path: path.to_string(),
             });
         }
-        let replaced = replace_render_export(&r.code);
-        code.push_str(&format!("\n{replaced}\n__sfc__.render = __sfc__render;"));
-    }
-
-    if scoped {
+        let replaced = replace_render_export(&r.code, render);
         code.push_str(&format!(
-            "\n(__sfc__.__vccOpts || __sfc__).__scopeId = {};",
-            serde_json::to_string(&format!("data-v-{id}")).unwrap()
+            "\n{replaced}\n__sfc__.{render} = __sfc__{render};"
         ));
     }
-    if !modules.is_empty() {
+
+    if c.scoped {
+        code.push_str(&format!(
+            "\n(__sfc__.__vccOpts || __sfc__).__scopeId = {};",
+            serde_json::to_string(&format!("data-v-{}", c.id)).unwrap()
+        ));
+    }
+    if !c.modules.is_empty() {
         let mut obj = serde_json::Map::new();
-        for (name, entries) in &modules {
+        for (name, entries) in c.modules {
             let mut inner = serde_json::Map::new();
             for (k, v) in entries {
                 inner.insert(k.clone(), serde_json::Value::String(v.clone()));
@@ -327,29 +388,21 @@ pub fn compile_vue(source: &str, path: &str) -> Result<VueOutput, VueFailure> {
             serde_json::to_string(&serde_json::Value::Object(obj)).unwrap()
         ));
     }
-
-    Ok(VueOutput {
-        logic,
-        template: template_code,
-        code: format!("// @shared\n{code}\nexport default __sfc__;"),
-        styles,
-        modules,
-    })
+    Ok(format!("// @shared\n{code}\nexport default __sfc__;"))
 }
 
-/// `/\nexport (function|const) render/` -> `$1 __sfc__render`
-fn replace_render_export(code: &str) -> String {
+/// `/\nexport (function|const) <name>/` -> `$1 __sfc__<name>`
+fn replace_render_export(code: &str, name: &str) -> String {
     for kw in ["function", "const"] {
-        let needle = format!("\nexport {kw} render");
+        let needle = format!("\nexport {kw} {name}");
         if let Some(i) = code.find(&needle) {
             let mut out = String::new();
             out.push_str(&code[..i]);
             // the regex consumes the leading newline too
-            out.push_str(&format!("{kw} __sfc__render"));
+            out.push_str(&format!("{kw} __sfc__{name}"));
             out.push_str(&code[i + needle.len()..]);
             return out;
         }
     }
     code.to_string()
 }
-

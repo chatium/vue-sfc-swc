@@ -1055,6 +1055,11 @@ fn run_ugc_cases(name: &str, cases: Vec<Value>, strict_errors: bool) {
                         source.to_string(),
                         format!("code:\ngot  {:?}\nwant {:?}", r.code, want_code),
                     ));
+                } else if r.ssr.as_deref() != out["ssr"].as_str() {
+                    failed.push((
+                        source.to_string(),
+                        format!("ssr:\ngot  {:?}\nwant {:?}", r.ssr, out["ssr"]),
+                    ));
                 } else if !styles_match(&r.styles, &out["styles"]) {
                     failed.push((
                         source.to_string(),

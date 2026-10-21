@@ -16,7 +16,8 @@ Goal: byte-identical output to the JS compiler for the API surface that package 
 | `@vue/compiler-ssr`'s `compile` | `ssr::compile` |
 
 `ugc::compile_vue(source, path)` is the whole `helper.cjs` `.vue` pipeline in one call, returning
-the same `{ logic, template, code, styles }` (or the same build error) the Node helper produces.
+the same `{ logic, template, code, ssr, styles }` (or the same build error) the Node helper produces.
+`ssr` is the same component compiled for `vue/server-renderer`, `None` when only that compile fails.
 `styles` is each non-empty `<style>` block's compiled CSS, in source order; `code` does not inject
 it, so how the CSS reaches the page (a `<style>` tag, a `.css` file next to a chunk) is the
 consumer's call.
@@ -29,7 +30,7 @@ vue-sfc = { git = "ssh://git@github.com/chatium/vue-sfc-swc.git" }
 ```
 
 ```rust
-let r = vue_sfc::ugc::compile_vue(source, path)?;   // { logic, template, code, styles }
+let r = vue_sfc::ugc::compile_vue(source, path)?;   // { logic, template, code, ssr, styles }
 ```
 
 It pins the same `swc_core` (`=80.0.0`) and toolchain (1.98.1) as
@@ -41,8 +42,10 @@ It pins the same `swc_core` (`=80.0.0`) and toolchain (1.98.1) as
 string-buffer codegen pass and `vue/server-renderer` imports — instead of the vnode pipeline.
 `compileScript` with `inline_template` + `template_ssr` emits `__ssrInlineRender: true` and the
 inline `(_ctx, _push, _parent, _attrs) => {}` render function, with `<style>`'s `v-bind()` injected
-as `_cssVars`. Nothing in `ugc::compile_vue` uses it: the consumer has no SSR path today, so SSR is
-an additive capability on the library API.
+as `_cssVars`. `ugc::compile_vue` returns it as `ssr`: `code`'s pipeline with `templateOptions.ssr`
+(and `compileTemplate({ ssr, ssrCssVars })` → `ssrRender` without `<script setup>`), which
+`ugc_vue` checks against the reference helper; on the Chatium workspaces it matches wherever `code`
+does.
 
 ## Shape of the port
 

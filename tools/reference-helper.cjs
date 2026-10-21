@@ -117,33 +117,47 @@ async function compileVue({ source, path }) {
     error.stage = templateFailed ? 'template' : 'style'
     throw error
   }
-  let code = 'const __sfc__ = {};'
-  let bindings
-  if (d.script || d.scriptSetup) {
-    const script = vue.compileScript(d, {
-      id,
-      inlineTemplate: true,
-      templateOptions: { scoped, compilerOptions: { expressionPlugins } },
-    })
-    bindings = script.bindings
-    code = vue.rewriteDefault(script.content, '__sfc__', expressionPlugins) + ';'
+  // The browser component, or with `ssr` the same component rendering to a string on the server.
+  const component = ssr => {
+    const render = ssr ? 'ssrRender' : 'render'
+    let code = 'const __sfc__ = {};'
+    let bindings
+    if (d.script || d.scriptSetup) {
+      const script = vue.compileScript(d, {
+        id,
+        inlineTemplate: true,
+        templateOptions: { ssr, scoped, compilerOptions: { expressionPlugins } },
+      })
+      bindings = script.bindings
+      code = vue.rewriteDefault(script.content, '__sfc__', expressionPlugins) + ';'
+    }
+    if (d.template && !d.scriptSetup) {
+      const compiled = vue.compileTemplate({
+        id,
+        source: d.template.content,
+        ast: d.template.ast,
+        filename: path,
+        scoped,
+        ssr,
+        ssrCssVars: d.cssVars,
+        compilerOptions: { bindingMetadata: bindings, expressionPlugins },
+      })
+      vueErrors(path, compiled.errors)
+      code +=
+        '\n' +
+        compiled.code.replace(new RegExp(`\\nexport (function|const) ${render}`), `$1 __sfc__${render}`) +
+        `\n__sfc__.${render} = __sfc__${render};`
+    }
+    if (scoped) code += `\n(__sfc__.__vccOpts || __sfc__).__scopeId = ${JSON.stringify('data-v-' + id)};`
+    if (Object.keys(modules).length) code += `\n(__sfc__.__vccOpts || __sfc__).__cssModules = ${JSON.stringify(modules)};`
+    return '// @shared\n' + code + '\nexport default __sfc__;'
   }
-  if (d.template && !d.scriptSetup) {
-    const compiled = vue.compileTemplate({
-      id,
-      source: d.template.content,
-      ast: d.template.ast,
-      filename: path,
-      scoped,
-      compilerOptions: { bindingMetadata: bindings, expressionPlugins },
-    })
-    vueErrors(path, compiled.errors)
-    code +=
-      '\n' +
-      compiled.code.replace(/\nexport (function|const) render/, '$1 __sfc__render') +
-      '\n__sfc__.render = __sfc__render;'
+  const code = component(false)
+  let ssr
+  try {
+    ssr = component(true)
+  } catch {
+    // Not a build error: the component then renders in the browser only.
   }
-  if (scoped) code += `\n(__sfc__.__vccOpts || __sfc__).__scopeId = ${JSON.stringify('data-v-' + id)};`
-  if (Object.keys(modules).length) code += `\n(__sfc__.__vccOpts || __sfc__).__cssModules = ${JSON.stringify(modules)};`
-  return { logic, template, code: '// @shared\n' + code + '\nexport default __sfc__;', styles }
+  return { logic, template, code, ssr, styles }
 }
