@@ -988,6 +988,17 @@ fn v_bind_shorthand_without_identifier_is_a_template_error() {
     }
 }
 
+/// A template only the SSR compile rejects: the component still compiles, its
+/// `ssr` is `None` and `ssr_error` says why.
+#[test]
+fn ssr_only_failure_reports_its_error() {
+    let source = "<template><Teleport><p>x</p></Teleport></template>\n";
+    let r = vue_sfc::ugc::compile_vue(source, "c.vue").expect("the client compile passes");
+    assert_eq!(r.ssr, None);
+    let error = r.ssr_error.expect("an SSR error");
+    assert!(error.contains("Missing the 'to' prop on teleport element"), "{error}");
+}
+
 /// End-to-end: the exact pipeline `helper.cjs` runs for `.vue` files.
 #[test]
 fn ugc_vue() {

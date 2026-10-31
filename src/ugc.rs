@@ -45,6 +45,8 @@ pub struct VueOutput {
     /// the same component compiled for `vue/server-renderer`; `None` when
     /// only its SSR compile fails
     pub ssr: Option<String>,
+    /// why `ssr` is `None`: its compile's error messages, `; `-joined
+    pub ssr_error: Option<String>,
     /// each non-empty `<style>`'s compiled CSS, in source order; `code` does
     /// not inject them, how they reach the DOM is the consumer's call
     pub styles: Vec<String>,
@@ -239,13 +241,20 @@ pub fn compile_vue(source: &str, path: &str) -> Result<VueOutput, VueFailure> {
     };
     let code = component(false)?;
     // not a build error: the component then renders in the browser only
-    let ssr = component(true).ok();
+    let (ssr, ssr_error) = match component(true) {
+        Ok(ssr) => (Some(ssr), None),
+        Err(failure) => {
+            let messages: Vec<_> = failure.errors.iter().map(|error| error.msg.as_str()).collect();
+            (None, Some(messages.join("; ")))
+        }
+    };
 
     Ok(VueOutput {
         logic,
         template: template_code,
         code,
         ssr,
+        ssr_error,
         styles,
         modules,
     })
