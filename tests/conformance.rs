@@ -999,6 +999,35 @@ fn ssr_only_failure_reports_its_error() {
     assert!(error.contains("Missing the 'to' prop on teleport element"), "{error}");
 }
 
+/// `comments: false` drops template comments from the client and SSR code,
+/// both with `<script setup>` (inline render) and without (separate render),
+/// and the root stops being a fragment; `v-if` placeholders stay.
+#[test]
+fn comments_option_drops_template_comments() {
+    let template =
+        "<template><!-- note --><div><!-- inner --><p v-if=\"ok\">x</p></div></template>\n";
+    let scripts = [
+        "<script setup>const ok = true</script>\n",
+        "<script>export default { data: () => ({ ok: true }) }</script>\n",
+    ];
+    for script in scripts {
+        let source = format!("{script}{template}");
+        let options = vue_sfc::ugc::VueOptions { comments: false };
+        let r = vue_sfc::ugc::compile_vue_with(&source, "c.vue", options).expect("compiles");
+        let ssr = r.ssr.expect("an SSR component");
+        for code in [&r.code, &ssr] {
+            assert!(!code.contains("note") && !code.contains("inner"), "{code}");
+            assert!(!code.contains("_Fragment"), "{code}");
+        }
+        assert!(r.code.contains("v-if"), "{}", r.code);
+        assert!(ssr.contains("<!---->"), "{ssr}");
+
+        let kept = vue_sfc::ugc::compile_vue(&source, "c.vue").expect("compiles");
+        let kept_ssr = kept.ssr.expect("an SSR component");
+        assert!(kept.code.contains("note") && kept_ssr.contains("note"));
+    }
+}
+
 /// End-to-end: the exact pipeline `helper.cjs` runs for `.vue` files.
 #[test]
 fn ugc_vue() {

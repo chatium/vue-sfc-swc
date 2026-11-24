@@ -88,6 +88,8 @@ pub struct SfcParseOptions {
     pub filename: String,
     pub source_map: bool,
     pub ignore_empty: bool,
+    /// keep template comments in the AST, so they render; Vue's production builds drop them
+    pub comments: bool,
 }
 
 pub const DEFAULT_FILENAME: &str = "anonymous.vue";
@@ -98,6 +100,7 @@ impl Default for SfcParseOptions {
             filename: DEFAULT_FILENAME.to_string(),
             source_map: true,
             ignore_empty: true,
+            comments: true,
         }
     }
 }
@@ -188,6 +191,7 @@ pub fn parse(source: &str, options: SfcParseOptions) -> SfcParseResult {
     let mut parser_options = dom_parser_options();
     parser_options.parse_mode = ParseMode::Sfc;
     parser_options.prefix_identifiers = true;
+    parser_options.comments = options.comments;
 
     let parsed = base_parse(source, parser_options);
     let arena = &parsed.arena;

@@ -61,14 +61,36 @@ fn sha1_id(source: &str) -> String {
     format!("{}{}", &hash[..4], &hash[hash.len() - 4..])
 }
 
+#[derive(Debug, Clone)]
+pub struct VueOptions {
+    /// keep `<!-- -->` template comments in the client and SSR output
+    pub comments: bool,
+}
+
+impl Default for VueOptions {
+    fn default() -> Self {
+        VueOptions { comments: true }
+    }
+}
+
 /// `compileVue` from `helper.cjs`
 pub fn compile_vue(source: &str, path: &str) -> Result<VueOutput, VueFailure> {
+    compile_vue_with(source, path, VueOptions::default())
+}
+
+/// [`compile_vue`] with options
+pub fn compile_vue_with(
+    source: &str,
+    path: &str,
+    options: VueOptions,
+) -> Result<VueOutput, VueFailure> {
     let slashed = format!("/{path}");
     let parsed = parse(
         source,
         SfcParseOptions {
             filename: slashed.clone(),
             source_map: true,
+            comments: options.comments,
             ..Default::default()
         },
     );
